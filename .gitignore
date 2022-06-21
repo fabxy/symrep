@@ -1,5 +1,7 @@
 # Custom
 data/
+models/
+hall_of_fame_*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
