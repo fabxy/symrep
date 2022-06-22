@@ -90,12 +90,13 @@ class SRNet(nn.Module):
 
 class SRData(Dataset):
 
-    def __init__(self, data_path, in_var=None, lat_var=None, target_var=None, data_mask=None, data_ext=".gz"):
+    def __init__(self, data_path, in_var=None, lat_var=None, target_var=None, data_mask=None, data_ext=".gz", device=torch.device("cpu")):
         super().__init__()
 
         self.path = data_path
         self.mask = data_mask
         self.ext = data_ext
+        self.device = device
 
         self.in_var = in_var                                          
         self.lat_var = lat_var
@@ -129,7 +130,7 @@ class SRData(Dataset):
         if self.mask is not None:
             data = data[self.mask]
 
-        return torch.Tensor(data)
+        return torch.Tensor(data).to(self.device)
 
     def __len__(self):
         return self.target_data.shape[0]
@@ -138,7 +139,7 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_file=None):
+def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_file=None, device=torch.device("cpu")):
     """
     TODO: 
     - Run on colab
@@ -150,7 +151,7 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
     torch.manual_seed(0)
 
     # create model
-    model = model_cls(**hp['arch'])
+    model = model_cls(**hp['arch']).to(device)
     model.train()
 
     # create data loader
@@ -225,12 +226,15 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
         }
     
     if save_file:
-        joblib.dump(state, save_file)
+        joblib.dump(state, save_file)                                   # TODO: consider device when saving?
 
     return state
 
 
 if __name__ == '__main__':
+
+    # set device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # load data
     data_path = "data"
@@ -242,8 +246,8 @@ if __name__ == '__main__':
     mask_ext = ".mask"
     masks = joblib.load(os.path.join(data_path, in_var + mask_ext))     # TODO: create mask if file does not exist
 
-    train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"])
-    val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"])
+    train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
+    val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # define hyperparameters
     hyperparams = {
