@@ -167,7 +167,9 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
     val_loss = []
     stime = time.time()
     times = []
-    for _ in (t:=trange(hp['epochs'], desc="Epoch")):
+    
+    t = trange(hp['epochs'], desc="Epoch")
+    for _ in t:
 
         batch_loss = []
         for in_data, target_data in loader:
