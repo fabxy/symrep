@@ -1,6 +1,6 @@
 # Custom
-data/
 models/
+wandb/
 hall_of_fame_*
 
 # Byte-compiled / optimized / DLL files

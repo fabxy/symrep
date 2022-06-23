@@ -44,10 +44,9 @@ class SRNet(nn.Module):
         else:
             hid_type1, hid_type2 = hid_type
 
-
         # layers from input to latent
         if hid_num1 == 0:
-            layers1 = [nn.Linear(in_size, lat_size), nn.ReLU()]         # Q: do we want ReLU here?
+            layers1 = [nn.Linear(in_size, lat_size)]
         else:
             layers1 = [nn.Linear(in_size, hid_size1), nn.ReLU()]
 
@@ -56,7 +55,6 @@ class SRNet(nn.Module):
                 layers1.append(nn.ReLU())
 
             layers1.append(nn.Linear(hid_size1, lat_size))
-            layers1.append(nn.ReLU())                                   # Q: do we want ReLU here?
 
         self.layers1 = nn.Sequential(*layers1)
 
@@ -70,7 +68,7 @@ class SRNet(nn.Module):
                 layers2.append(nn.Linear(hid_size2, hid_size2))
                 layers2.append(nn.ReLU())
 
-            layers2.append(nn.Linear(hid_size1, out_size))
+            layers2.append(nn.Linear(hid_size2, out_size))
 
         self.layers2 = nn.Sequential(*layers2)
 
@@ -144,8 +142,6 @@ class SRData(Dataset):
 def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
     """
     TODO: 
-    - Run on colab
-    - Use wandb
     - Implement restart option
     """
 
@@ -254,6 +250,9 @@ if __name__ == '__main__':
     # set device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    # set wandb project
+    wandb_project = "first-try"
+
     # load data
     data_path = "data"
     
@@ -273,7 +272,7 @@ if __name__ == '__main__':
             "in_size": train_data.in_data.shape[1],
             "out_size": train_data.target_data.shape[1],
             "hid_num": 3,
-            "hid_size": 50, 
+            "hid_size": (50, 25), 
             "hid_type": "MLP",
             "lat_size": 10,
             },
@@ -286,4 +285,4 @@ if __name__ == '__main__':
         "shuffle": True,
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, device=device) #, wandb_project="first-try")
+    run_training(SRNet, hyperparams, train_data, val_data, device=device, wandb_project=wandb_project)
