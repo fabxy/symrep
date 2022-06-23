@@ -22,6 +22,9 @@ masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
 train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
+# set save file
+save_file = f"models/srnet_model_{target_var}_conv.pkl"
+
 # define hyperparameters
 hyperparams = {
     "arch": {
@@ -41,4 +44,4 @@ hyperparams = {
     "shuffle": True,
 }
 
-run_training(SRNet, hyperparams, train_data, val_data, device=device, wandb_project=wandb_project)
+run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)

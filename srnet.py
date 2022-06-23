@@ -225,7 +225,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
     state = {
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
-        "hyperparams": hp,
+        "hyperparams": hyperparams,
         "train_loss": train_loss,
         "val_loss": val_loss,
         "total_train_loss": total_train_loss,
@@ -238,6 +238,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
     
     if save_file:
         joblib.dump(state, save_file)                                   # TODO: consider device when saving?
+        
+        if wandb_project:
+            wandb.save(save_file)
 
     if wandb_project:
         wandb.finish()
@@ -251,20 +254,23 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # set wandb project
-    wandb_project = "first-try"
+    wandb_project = None # "first-try"
 
     # load data
     data_path = "data"
     
     in_var = "X01"
     lat_var = None
-    target_var = "G01"
+    target_var = "F01"
 
     mask_ext = ".mask"
     masks = joblib.load(os.path.join(data_path, in_var + mask_ext))     # TODO: create mask if file does not exist
 
     train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
+
+    # set save file
+    save_file = None
 
     # define hyperparameters
     hyperparams = {
@@ -285,4 +291,4 @@ if __name__ == '__main__':
         "shuffle": True,
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)
