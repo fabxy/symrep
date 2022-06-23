@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
+import wandb
 
 from collections.abc import Iterable
 
@@ -73,7 +74,7 @@ class SRNet(nn.Module):
 
         self.layers2 = nn.Sequential(*layers2)
 
-    def forward(self, in_data, get_acts=False):
+    def forward(self, in_data, get_lat=False):
 
         # propagate from input to latent
         x = self.layers1(in_data)
@@ -82,7 +83,7 @@ class SRNet(nn.Module):
         # propagate from latent to output
         x = self.layers2(x)
 
-        if get_acts:
+        if get_lat:
             return (x, lat_acts)
         else:
             return x
@@ -93,6 +94,7 @@ class SRData(Dataset):
     def __init__(self, data_path, in_var=None, lat_var=None, target_var=None, data_mask=None, data_ext=".gz", device=torch.device("cpu")):
         super().__init__()
 
+        # store args
         self.path = data_path
         self.mask = data_mask
         self.ext = data_ext
@@ -130,7 +132,7 @@ class SRData(Dataset):
         if self.mask is not None:
             data = data[self.mask]
 
-        return torch.Tensor(data).to(self.device)
+        return torch.Tensor(data).to(self.device)                       # Q: all data to device or per batch?
 
     def __len__(self):
         return self.target_data.shape[0]
@@ -139,13 +141,20 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_file=None, device=torch.device("cpu")):
+def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
     """
     TODO: 
     - Run on colab
     - Use wandb
     - Implement restart option
     """
+
+    # initialize wandb
+    if wandb_project:
+        wandb.init(project=wandb_project, config=hyperparams)
+        hp = wandb.config
+    else:
+        hp = hyperparams
 
     # set seed
     torch.manual_seed(0)
@@ -168,16 +177,20 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
     val_loss = []
     stime = time.time()
     times = []
-    
+
+    # if wandb_project:                                                 # NOTE: watching gradients and parameters is too slow
+    #     batch_num = int(np.ceil(len(train_data) / hp["batch_size"]))
+    #     wandb.watch(model, loss_fun, log="all", log_freq=batch_num)
+
     t = trange(hp['epochs'], desc="Epoch")
-    for _ in t:
+    for epoch in t:
 
         batch_loss = []
         for in_data, target_data in loader:
 
             optimizer.zero_grad()
 
-            preds, lat_acts = model(in_data, get_acts=True)
+            preds, lat_acts = model(in_data, get_lat=True)
 
             loss = loss_fun(preds, target_data)
 
@@ -199,6 +212,8 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
         times.append(time.time() - stime)
 
         t.set_postfix({"train_loss": f"{train_loss[-1]:.2e}", "val_loss": f"{val_loss[-1]:.2e}"})
+        if wandb_project:
+            wandb.log({"epoch": epoch, "time": times[-1], "train_loss": train_loss[-1], "val_loss": val_loss[-1]})
         
         if hp["runtime"]:
             if times[-1] > hp["runtime"]:
@@ -228,6 +243,9 @@ def run_training(model_cls, hp, train_data, val_data=None, load_file=None, save_
     if save_file:
         joblib.dump(state, save_file)                                   # TODO: consider device when saving?
 
+    if wandb_project:
+        wandb.finish()
+
     return state
 
 
@@ -254,7 +272,7 @@ if __name__ == '__main__':
         "arch": {
             "in_size": train_data.in_data.shape[1],
             "out_size": train_data.target_data.shape[1],
-            "hid_num": 2,
+            "hid_num": 3,
             "hid_size": 50, 
             "hid_type": "MLP",
             "lat_size": 10,
@@ -263,9 +281,9 @@ if __name__ == '__main__':
         "runtime": None,
         "batch_size": 50,
         "lr": 1e-4,                                                     # TODO: adaptive learning rate?
-        "wd": 1e-7,
+        "wd": 1e-4,
         # "l1": 1e-4,
         "shuffle": True,
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data)
+    run_training(SRNet, hyperparams, train_data, val_data, device=device) #, wandb_project="first-try")
