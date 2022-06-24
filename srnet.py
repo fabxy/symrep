@@ -241,6 +241,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         }
     
     if save_file:
+        while os.path.isfile(save_file):
+            save_file = save_file.replace(".", "_v.")                   # TODO: improve versioning savefiles
+
         joblib.dump(state, save_file)                                   # TODO: consider device when saving?
         
         if wandb_project:
@@ -291,7 +294,7 @@ if __name__ == '__main__':
         "batch_size": 50,
         "lr": 1e-4,                                                     # TODO: adaptive learning rate?
         "wd": 1e-4,
-        # "l1": 1e-4,
+        "l1": 0.0,
         "shuffle": True,
     }
 

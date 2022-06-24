@@ -2,12 +2,15 @@ import os
 import torch
 import joblib
 from srnet import SRNet, SRData, run_training
+import wandb
 
 # set device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# set wandb project
-wandb_project = "31-check-convergence"
+# set wandb options
+wandb_project = "41-l1-study"
+sweep_id = "zbjozph3"
+sweep_num = 4
 
 # load data
 data_path = "data"
@@ -23,7 +26,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # set save file
-save_file = f"models/srnet_model_{target_var}_conv.pkl"
+save_file = f"models/srnet_model_{target_var}_l1.pkl"
 
 # define hyperparameters
 hyperparams = {
@@ -40,8 +43,19 @@ hyperparams = {
     "batch_size": 64,
     "lr": 1e-4,
     "wd": 1e-4,
-    # "l1": 1e-4,
+    "l1": 0.0,
     "shuffle": True,
 }
 
-run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project);
+def train():
+    run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)
+
+if __name__ == "__main__":
+
+    # hyperparameter study
+    if sweep_id:
+        wandb.agent(sweep_id, train, count=sweep_num, project=wandb_project)
+
+    # one training run
+    else:
+        train()
