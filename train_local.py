@@ -44,4 +44,4 @@ hyperparams = {
     "shuffle": True,
 }
 
-run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)
+run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project);
