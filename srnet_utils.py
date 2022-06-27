@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import joblib
+from scipy.stats import pearsonr
 
 def plot_losses(save_names, save_path=".", label_var=None):
 
@@ -68,6 +69,21 @@ def get_node_order(acts, show=False):
     return node_order
 
 
+def node_correlations(acts, nodes, data_tup, nonzero=False):
+    for n in nodes:
+        print(f"\nNode {n}")
+
+        if nonzero:
+            mask = (acts[:,n].abs() > 0.0).tolist()
+
+        for d in data_tup:
+            
+            corr_info = f"{pearsonr(acts[:,n], d[1])[0]:.4f}"
+            if nonzero:
+                corr_info += f"/{pearsonr(acts[mask,n], d[1][mask])[0]:.4f}"
+            print(f"corr(n{n}, {d[0]}): {corr_info}")
+
+
 def plot_acts(x_data, y_data, z_data, model=None, acts=None, nodes=[], nonzero=False, plot_size=500):
     
     _ = plt.figure()
@@ -77,8 +93,8 @@ def plot_acts(x_data, y_data, z_data, model=None, acts=None, nodes=[], nonzero=F
     y_data = y_data[:plot_size].numpy()
     
     for d in z_data:
-        z_data = d[:plot_size].numpy()
-        ax.scatter3D(x_data, y_data, z_data)
+        z_data = d[1][:plot_size].numpy()
+        ax.scatter3D(x_data, y_data, z_data, label=d[0])
        
     # if agg:
     #     nonzero = False

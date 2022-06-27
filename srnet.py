@@ -273,7 +273,7 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # set save file
-    save_file = "test_model_{l1:.1e}_{hid_num}"
+    save_file = None
 
     # define hyperparameters
     hyperparams = {
