@@ -147,11 +147,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
 
     # initialize wandb
     if wandb_project:
-        if save_file:
-            save_name = os.path.basename(save_file).split('.')[0]
-        else:
-            save_name = None
-        wandb.init(project=wandb_project, config=hyperparams, name=save_name)
+        # if save_file:
+        #     save_name = os.path.basename(save_file).split('.')[0]
+        # else:
+        #     save_name = None
+        wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
     else:
         hp = hyperparams
@@ -241,8 +241,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         }
     
     if save_file:
-        while os.path.isfile(save_file):
-            save_file = save_file.replace(".", "_v.")                   # TODO: improve versioning savefiles
+        # while os.path.isfile(save_file):
+        #     save_file = save_file.replace(".", "_v.")                   # TODO: improve versioning savefiles
 
         joblib.dump(state, save_file)                                   # TODO: consider device when saving?
         
