@@ -147,12 +147,10 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
 
     # initialize wandb
     if wandb_project:
-        # if save_file:
-        #     save_name = os.path.basename(save_file).split('.')[0]
-        # else:
-        #     save_name = None
         wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
+        if save_file:
+            wandb.run.name = (os.path.basename(save_file).split('.')[0]).format(**hp, **hp['arch'])
     else:
         hp = hyperparams
 
@@ -229,7 +227,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
     state = {
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
-        "hyperparams": hyperparams,
+        "hyperparams": hp._items if wandb_project else hp,
         "train_loss": train_loss,
         "val_loss": val_loss,
         "total_train_loss": total_train_loss,
@@ -241,10 +239,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         }
     
     if save_file:
-        # while os.path.isfile(save_file):
-        #     save_file = save_file.replace(".", "_v.")                   # TODO: improve versioning savefiles
-
-        joblib.dump(state, save_file)                                   # TODO: consider device when saving?
+        os.makedirs(data_path, exist_ok=True)
+        joblib.dump(state, save_file.format(**hp, **hp['arch']))        # TODO: consider device when saving?
         
         if wandb_project:
             wandb.save(save_file)
@@ -261,7 +257,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # set wandb project
-    wandb_project = None # "first-try"
+    wandb_project = "first-try"
 
     # load data
     data_path = "data"
@@ -277,7 +273,7 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # set save file
-    save_file = None
+    save_file = "test_model_{l1:.1e}_{hid_num}"
 
     # define hyperparameters
     hyperparams = {
