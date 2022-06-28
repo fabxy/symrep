@@ -159,7 +159,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
         if save_file:
-            wandb.run.name = (os.path.basename(save_file).split('.')[0]).format(**hp, **hp['arch'])
+            wandb.run.name = os.path.basename(save_file.format(**hp, **hp['arch'])).split('.')[0]
     else:
         hp = hyperparams
 
