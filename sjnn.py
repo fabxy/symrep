@@ -69,11 +69,11 @@ class SparseJacobianNN(nn.Module):
 
     def forward(self, x):
         xtilde = self.get_masked_input(x)
-        for i in range(self.nlayers - 1):
+        for i in range(self.nlayers + 1):
             xtilde = self.act(self.apply_layer(i, xtilde))
 
-        out = self.apply_layer(self.nlayers - 1, xtilde)[..., 0]
-        return out
+        out = self.apply_layer(self.nlayers + 1, xtilde)
+        return torch.squeeze(out, dim=-1)
 
 
 def init_weights_3d(n1, n2, n3):
