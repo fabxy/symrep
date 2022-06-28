@@ -10,6 +10,7 @@ import torch.optim as optim
 import wandb
 
 from collections.abc import Iterable
+from sjnn import SparseJacobianNN as SJNN
 
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -45,32 +46,40 @@ class SRNet(nn.Module):
             hid_type1, hid_type2 = hid_type
 
         # layers from input to latent
-        if hid_num1 == 0:
-            layers1 = [nn.Linear(in_size, lat_size)]
-        else:
-            layers1 = [nn.Linear(in_size, hid_size1), nn.ReLU()]
+        if hid_type1 == "MLP":
+            if hid_num1 == 0:
+                layers1 = [nn.Linear(in_size, lat_size)]
+            else:
+                layers1 = [nn.Linear(in_size, hid_size1), nn.ReLU()]
 
-            for _ in range(hid_num1 - 1):
-                layers1.append(nn.Linear(hid_size1, hid_size1))
-                layers1.append(nn.ReLU())
+                for _ in range(hid_num1 - 1):
+                    layers1.append(nn.Linear(hid_size1, hid_size1))
+                    layers1.append(nn.ReLU())
 
-            layers1.append(nn.Linear(hid_size1, lat_size))
+                layers1.append(nn.Linear(hid_size1, lat_size))
 
-        self.layers1 = nn.Sequential(*layers1)
+            self.layers1 = nn.Sequential(*layers1)
+        
+        elif hid_type1 == "DSN":
+            self.layers1 = SJNN(in_size, lat_size, hid_size1, hid_num1-1)
 
         # layers from latent to output
-        if hid_num2 == 0:
-            layers2 = [nn.Linear(lat_size, out_size)]
-        else:
-            layers2 = [nn.Linear(lat_size, hid_size2), nn.ReLU()]
+        if hid_type2 == "MLP":
+            if hid_num2 == 0:
+                layers2 = [nn.Linear(lat_size, out_size)]
+            else:
+                layers2 = [nn.Linear(lat_size, hid_size2), nn.ReLU()]
 
-            for _ in range(hid_num2 - 1):
-                layers2.append(nn.Linear(hid_size2, hid_size2))
-                layers2.append(nn.ReLU())
+                for _ in range(hid_num2 - 1):
+                    layers2.append(nn.Linear(hid_size2, hid_size2))
+                    layers2.append(nn.ReLU())
 
-            layers2.append(nn.Linear(hid_size2, out_size))
+                layers2.append(nn.Linear(hid_size2, out_size))
 
-        self.layers2 = nn.Sequential(*layers2)
+            self.layers2 = nn.Sequential(*layers2)
+
+        elif hid_type2 == "DSN":
+            self.layers2 = SJNN(in_size, lat_size, hid_size2, hid_num2-1)
 
     def forward(self, in_data, get_lat=False):
 
@@ -195,6 +204,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
             if 'l1' in hp and hp['l1'] > 0:
                 loss += hp['l1'] * torch.sum(torch.abs(lat_acts)) / lat_acts.shape[1]
 
+            if ('a1' in hp and 'a2' in hp) and (hp['a1'] > 0 or hp['a2'] > 0):
+                loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])      # TODO: deal with layers2
+
             loss.backward()
 
             optimizer.step()
@@ -257,7 +269,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # set wandb project
-    wandb_project = "first-try"
+    wandb_project = None # "first-try"
 
     # load data
     data_path = "data"
@@ -282,7 +294,7 @@ if __name__ == '__main__':
             "out_size": train_data.target_data.shape[1],
             "hid_num": 3,
             "hid_size": (50, 25), 
-            "hid_type": "MLP",
+            "hid_type": ("DSN", "MLP"),
             "lat_size": 10,
             },
         "epochs": 1000,
@@ -291,6 +303,8 @@ if __name__ == '__main__':
         "lr": 1e-4,                                                     # TODO: adaptive learning rate?
         "wd": 1e-4,
         "l1": 0.0,
+        "a1": 1e-3, 
+        "a2": 1e-3,
         "shuffle": True,
     }
 

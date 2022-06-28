@@ -84,7 +84,7 @@ def node_correlations(acts, nodes, data_tup, nonzero=False):
             print(f"corr(n{n}, {d[0]}): {corr_info}")
 
 
-def plot_acts(x_data, y_data, z_data, model=None, acts=None, nodes=[], nonzero=False, plot_size=500):
+def plot_acts(x_data, y_data, z_data, acts=None, nodes=[], model=None, bias=False, nonzero=False, agg=False, plot_size=500):
     
     _ = plt.figure()
     ax = plt.axes(projection='3d')
@@ -95,24 +95,33 @@ def plot_acts(x_data, y_data, z_data, model=None, acts=None, nodes=[], nonzero=F
     for d in z_data:
         z_data = d[1][:plot_size].numpy()
         ax.scatter3D(x_data, y_data, z_data, label=d[0])
+
+    b = 0
+    if model:
+        b = model.layers2[0]._parameters['bias'].item() * bias
        
-    # if agg:
-    #     nonzero = False
-    #     z_data = np.ones(x_data.shape) * b
-    #     b = 0
+    if agg:
+        nonzero = False
+        z_data = np.ones(x_data.shape) * b
+        b = 0
 
     for n in nodes:
-
         if nonzero:
             mask = (acts[:,n].abs() > 0.0).tolist()[:plot_size]
         else:
             mask = [True] * plot_size
 
-        z_data = acts[:,n][:plot_size].numpy()
-        
-        # if agg:
-        #     z_data += n_data
-        
+        n_data = acts[:,n][:plot_size].numpy()
+
+        if model:
+            w = model.layers2[0]._parameters['weight'].detach().numpy()[0, n]
+            n_data = w * n_data + b
+
+        if agg:
+            z_data += n_data
+        else:
+            z_data = n_data
+                
         ax.scatter3D(x_data[mask], y_data[mask], z_data[mask], label=str(n))
 
     ax.legend()
