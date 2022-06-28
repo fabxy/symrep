@@ -9,7 +9,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "51-a1-a2-study-F00"
-sweep_id = "2rtgnxtt"
+sweep_id = "fr729ais"
 sweep_num = 16
 
 # load data
