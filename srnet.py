@@ -251,8 +251,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         }
     
     if save_file:
+        save_file = save_file.format(**hp, **hp['arch'])
         os.makedirs(os.path.dirname(save_file), exist_ok=True)
-        joblib.dump(state, save_file.format(**hp, **hp['arch']))        # TODO: consider device when saving?
+        joblib.dump(state, save_file)                                   # TODO: consider device when saving?
         
         if wandb_project:
             wandb.save(save_file)
