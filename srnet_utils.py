@@ -18,12 +18,7 @@ def plot_losses(save_names, save_path=".", label_var=None):
         for file_name in sorted(os.listdir(save_path)):
             if save_name in file_name:
                 
-                # states.append(joblib.load(os.path.join(save_path, file_name)))
                 state = joblib.load(os.path.join(save_path, file_name))
-
-                # if label_var:
-                #     label = file_name.split('.')[0].split('_')[-1] + ": " + '/'.join([str(states[-1]['hyperparams'][var]) if var in states[-1]['hyperparams'] else str(0) for var in label_var])
-                # else:
                 label = file_name.split('.')[0]
                 
                 # plot training loss

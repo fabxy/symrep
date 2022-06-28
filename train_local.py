@@ -8,16 +8,16 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "31-check-convergence-10k"
-sweep_id = None
-sweep_num = None
+wandb_project = "51-a1-a2-study-F00"
+sweep_id = "2rtgnxtt"
+sweep_num = 16
 
 # load data
-data_path = "data"
+data_path = "data_1k"
 
-in_var = "X02"
+in_var = "X00"
 lat_var = None
-target_var = "F02"
+target_var = "F00"
 
 mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
@@ -26,16 +26,16 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # set save file
-save_file = f"models/srnet_model_{target_var}_conv10k.pkl"
+save_file = "models/srnet_model_F00_a1_{a1:.0e}_a2_{a2:.0e}.pkl"
 
 # define hyperparameters
 hyperparams = {
     "arch": {
         "in_size": train_data.in_data.shape[1],
         "out_size": train_data.target_data.shape[1],
-        "hid_num": 2,
+        "hid_num": (2,0),
         "hid_size": 32, 
-        "hid_type": "MLP",
+        "hid_type": ("DSN", "MLP"),
         "lat_size": 16,
         },
     "epochs": 10000,
@@ -44,6 +44,8 @@ hyperparams = {
     "lr": 1e-4,
     "wd": 1e-4,
     "l1": 0.0,
+    "a1": 0.0,
+    "a2": 0.0,
     "shuffle": True,
 }
 
