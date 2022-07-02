@@ -18,10 +18,8 @@ The goal is using deep learning to accelerate symbolic regression and model disc
 
 5. Train [DSN](https://astroautomata.com/data/sjnn_paper.pdf) with $L_1$ regularization on latent features
 
-6. Run symbolic regression on latent feature predictions
+6. Train [DSN](https://astroautomata.com/data/sjnn_paper.pdf) with $L_1$ regularization on latent features using GhostAdam
 
 7. Implement symbolic discriminator
 
-## TODO
-
-- [] Nothing
+8. Run symbolic regression on latent feature predictions

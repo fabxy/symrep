@@ -65,6 +65,8 @@ class SparseJacobianNN(nn.Module):
         importances = self.alpha  # [n_out, n_in]
         few_latents = self.l0_func(importances, dim=1).sum()
         few_dependencies = self.max_func(self.l0_func(importances, dim=1), dim=0)
+        # few_latents = self.alpha.abs().sum()
+        # few_dependencies = self.alpha.pow(2).sum().pow(-1)
         return a1 * few_latents + a2 * few_dependencies
 
     def forward(self, x):

@@ -11,6 +11,7 @@ import wandb
 
 from collections.abc import Iterable
 from sjnn import SparseJacobianNN as SJNN
+from ghost import GhostAdam, GhostWrapper
 
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -170,6 +171,10 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
     model = model_cls(**hp['arch']).to(device)
     model.train()
 
+    # create ghost model
+    if 'gc' in hp and hp['gc'] > 0:
+        model = GhostWrapper(model)
+
     # create data loader
     loader = DataLoader(train_data, batch_size=hp['batch_size'], shuffle=hp['shuffle'])
 
@@ -177,7 +182,10 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
     loss_fun = nn.MSELoss()
 
     # optimizer
-    optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
+    if 'gc' in hp and hp['gc'] > 0:
+        optimizer = GhostAdam(model, lr=hp['lr'], weight_decay=hp['wd'], ghost_coeff=hp['gc'])
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
 
     # define training loop
     train_loss = []
@@ -202,10 +210,17 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
             loss = loss_fun(preds, target_data)
 
             if 'l1' in hp and hp['l1'] > 0:
+                
+                if 'gc' in hp and hp['gc'] > 0:
+                    preds, lat_acts = model.ghost(in_data, get_lat=True)
+                    
                 loss += hp['l1'] * torch.sum(torch.abs(lat_acts)) / lat_acts.shape[1]
 
             if ('a1' in hp and 'a2' in hp) and (hp['a1'] > 0 or hp['a2'] > 0):
-                loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])      # TODO: deal with layers2
+                if 'gc' in hp and hp['gc'] > 0:
+                    loss += model.ghost.layers1.sparsifying_loss(hp['a1'], hp['a2'])
+                else:
+                    loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])      # TODO: deal with layers2
 
             loss.backward()
 
@@ -304,8 +319,9 @@ if __name__ == '__main__':
         "lr": 1e-4,                                                     # TODO: adaptive learning rate?
         "wd": 1e-4,
         "l1": 0.0,
-        "a1": 1e-3, 
-        "a2": 1e-3,
+        "a1": 0.0, 
+        "a2": 0.0,
+        "gc": 0.0,
         "shuffle": True,
     }
 
