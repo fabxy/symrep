@@ -9,8 +9,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "61-l1-gc-study-F00"
-sweep_id = "xnfh3aes"
-sweep_num = 9
+sweep_id = "97wucoen"
+sweep_num = 5
 
 # load data
 data_path = "data_1k"
@@ -45,7 +45,7 @@ hyperparams = {
     "batch_size": 64,
     "lr": 1e-4,
     "wd": 1e-4,
-    "l1": 0.0,
+    "l1": 1e-3,
     "a1": 0.0,
     "a2": 0.0,
     "gc": 0.0,
