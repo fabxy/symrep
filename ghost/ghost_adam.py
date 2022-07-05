@@ -5,6 +5,7 @@ from torch import nn
 from torch import optim
 from .ghost_wrapper import GhostWrapper
 from .ghost_tuple import GhostTuple
+import warnings
 
 
 class GhostAdam(optim.Adam):
@@ -23,6 +24,7 @@ class GhostAdam(optim.Adam):
         eps=1e-8,
         weight_decay=0,
         ghost_coeff=1e-6,
+        ghost_scaled=True,
     ):
         if isinstance(parameters_or_model, nn.Module):
             if ghost_parameters is not None:
@@ -48,6 +50,8 @@ class GhostAdam(optim.Adam):
         self.eps = eps
         self.ghost_coeff = ghost_coeff
         self.ghost_loss = None
+        self.scaled = ghost_scaled
+        self.ghost_step = 0
 
         super().__init__(
             [
@@ -60,13 +64,20 @@ class GhostAdam(optim.Adam):
             weight_decay=weight_decay,
         )
 
-    def get_param_differences_and_scales(self):
+    @property
+    def ghost_tuple_param_group(self):
+        return GhostTuple(live=self.param_groups[0], ghost=self.param_groups[1])
+
+    def get_param_distance(self, scaled=True):
         differences = []
         combined_scales = []
 
-        param_group = GhostTuple(live=self.param_groups[0], ghost=self.param_groups[1])
+        param_group = self.ghost_tuple_param_group
 
         beta2 = param_group["betas"][0]
+        distances = []
+        scales = []
+        numel = 0
 
         for p in param_group["params"]:
 
@@ -80,58 +91,71 @@ class GhostAdam(optim.Adam):
             elif state.live["step"] == 0:
                 continue
 
-            if "step" not in state.ghost or state["step"].live != state["step"].ghost:
+            if "step" not in state.ghost:
                 raise ValueError(
                     "You have not trained the ghost model as many steps "
                     "as the primary model."
                 )
 
-            step = state["step"]
-
-            bias_correction2 = 1 - beta2**step
-            v_t = state["exp_avg_sq"]  # In Adam paper, this is v_t
-            hat_v_t = v_t / bias_correction2
-
-            combined_hat_v_t = hat_v_t.live + hat_v_t.ghost
-
             # Adam: update = -lr * hat_m_t / (sqrt(hat_v_t) + eps)
-            combined_scales.append(1 / (torch.sqrt(combined_hat_v_t) + self.eps))
-            differences.append(p.live - p.ghost)
+            if scaled:
+                step = state["step"]
+                bias_correction2 = 1 - beta2**step
+                v_t = state["exp_avg_sq"]  # In Adam paper, this is v_t
+                hat_v_t = v_t / bias_correction2
+                combined_hat_v_t = hat_v_t.live + hat_v_t.ghost
+                s = 1 / (torch.sqrt(combined_hat_v_t) + self.eps)
+            else:
+                s = torch.ones_like(p.live.data)
 
-        return differences, combined_scales
+            distances.append(
+                ((p.live - p.ghost).pow(2) * s).sum()
+            )
+            scales.append(s.sum())
+            numel += p.live.numel()
 
-    def ghost_loss_backward(self):
-        differences, combined_scales = self.get_param_differences_and_scales()
-
-        if len(combined_scales) == 0:
+        if len(scales) == 0:
+            if self.ghost_step == 1:
+                warnings.warn(
+                    "It seems you are not computing gradients for the ghost "
+                    "model. This warning will be silenced."
+                )
+            # No parameters have gradients yet.
             return
 
-        sum_scales = sum(s.sum() for s in combined_scales)
-        num_scales = sum(s.numel() for s in combined_scales)
-        scale_normalization = sum_scales / num_scales
+        scale_normalization = torch.sum(torch.stack(scales)) / numel
+        distance = torch.sum(torch.stack(distances))
 
-        # Make the average scale equal to 1:
-        combined_scales = [s / scale_normalization for s in combined_scales]
+        scaled_distance = distance / scale_normalization
+        return scaled_distance
 
-        distance = torch.stack(
-            [(d.pow(2) * s).sum() for (d, s) in zip(differences, combined_scales)]
-        ).sum()
-        ghost_loss = self.ghost_coeff * distance
+    def ghost_loss_backward(self):
+        scaled_distance = self.get_param_distance(scaled=self.scaled)
+
+        if scaled_distance is None:
+            return
+
+        ghost_loss = self.ghost_coeff * scaled_distance
         self.ghost_loss = ghost_loss.item()
         ghost_loss.backward()
 
     def ensure_all_params_have_gradient(self):
-        param_group = GhostTuple(live=self.param_groups[0], ghost=self.param_groups[1])
+        param_group = self.ghost_tuple_param_group
 
         all_p = []
         for p in param_group["params"]:
-            all_p.append(p.live.sum() * 0.0 + p.ghost.sum() * 0.0)
-
-        torch.stack(all_p).sum().backward()
+            # Ensure parameters have a gradient:
+            if p.live.grad is None:
+                (p.live.sum() * 0.0).backward()
+            if p.ghost.grad is None:
+                (p.ghost.sum() * 0.0).backward()
 
     def step(self):
         """Normal Adam step, but we include an SR3 loss."""
-        self.ghost_loss_backward()
         self.ensure_all_params_have_gradient()
 
-        super().step()
+        if self.ghost_step > 0:
+            self.ghost_loss_backward()
+
+        super(GhostAdam, self).step()
+        self.ghost_step += 1

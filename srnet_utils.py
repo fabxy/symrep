@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import joblib
+from collections import OrderedDict
 from scipy.stats import pearsonr
 
 def plot_losses(save_names, save_path=".", label_var=None):
@@ -36,7 +37,7 @@ def plot_losses(save_names, save_path=".", label_var=None):
     plt.show()
 
 
-def load_model(save_file, save_path=".", model_cls=None):
+def load_model(save_file, save_path=".", model_cls=None, model_type=None):
 
     # get hyperparameters
     state = joblib.load(os.path.join(save_path, save_file))
@@ -45,10 +46,49 @@ def load_model(save_file, save_path=".", model_cls=None):
     # create model
     model = model_cls(**hp['arch'])
 
+    # check model type
+    if "gc" in hp and hp["gc"] > 0.0:
+        
+        if model_type is None:
+            prefix = "_ghost_model."
+        else:
+            prefix = f"_{model_type}_model."
+
+        model_state = OrderedDict((k.replace(prefix, ''), v) for k, v in state['model_state'].items() if prefix in k)
+    else:
+        model_state = state['model_state']
+
     # update model
-    model.load_state_dict(state['model_state'])
+    model.load_state_dict(model_state)
 
     return model
+
+
+def get_param_diff(save_file, save_path=".", show=False):
+    """Compare live and ghost model parameters."""
+
+    # get model state
+    state = joblib.load(os.path.join(save_path, save_file))
+    hp = state['hyperparams']
+
+    # get mean absolute difference
+    if "gc" in hp and hp["gc"] > 0.0:
+        res = 0
+        count = 0
+        for param_name in state['model_state']:
+            if "live" in param_name:
+                diff = (state['model_state'][param_name] - state['model_state'][param_name.replace("live", "ghost")]).abs()
+                res += diff.sum().numpy()
+                count += diff.numel()
+
+        res /= count
+    else:
+        res = 0.0
+
+    if show:
+        print(res)
+    
+    return res
 
 
 def get_variance(acts):

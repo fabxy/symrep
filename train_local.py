@@ -8,9 +8,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "61-l1-gc-study-F00"
-sweep_id = "97wucoen"
-sweep_num = 5
+wandb_project = "62-a1-a2-gc-study-F00"
+sweep_id = "a1y7fbbs"
+sweep_num = 12
 
 # load data
 data_path = "data_1k"
@@ -26,8 +26,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # set save file
-save_file = "models/srnet_model_F00_l1_{l1:.0e}_gc_{gc:.0e}.pkl"
-# save_file = "models/srnet_model_F00_a1_{a1:.0e}_a2_{a2:.0e}_gc_{gc:.0e}.pkl"
+save_file = "models/srnet_model_F00_a1_{a1:.0e}_a2_{a2:.0e}_gc_{gc:.0e}.pkl"
 
 
 # define hyperparameters
@@ -37,7 +36,7 @@ hyperparams = {
         "out_size": train_data.target_data.shape[1],
         "hid_num": (2,0),
         "hid_size": 32, 
-        "hid_type": "MLP",
+        "hid_type": ("DSN", "MLP"),
         "lat_size": 16,
         },
     "epochs": 10000,
@@ -45,7 +44,7 @@ hyperparams = {
     "batch_size": 64,
     "lr": 1e-4,
     "wd": 1e-4,
-    "l1": 1e-3,
+    "l1": 0.0,
     "a1": 0.0,
     "a2": 0.0,
     "gc": 0.0,
