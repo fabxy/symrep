@@ -5,7 +5,7 @@ import joblib
 from collections import OrderedDict
 from scipy.stats import pearsonr
 
-def plot_losses(save_names, save_path=".", label_var=None):
+def plot_losses(save_names, save_path=".", excl_names=None, label_var=None):
 
     _, ax = plt.subplots()
 
@@ -15,12 +15,14 @@ def plot_losses(save_names, save_path=".", label_var=None):
     if isinstance(label_var, str):
         label_var = [label_var]
 
+    model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name:
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
                 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
+                model_names.append(label)
                 
                 # plot training loss
                 lines = ax.plot(state['train_loss'], label=label)
@@ -35,6 +37,8 @@ def plot_losses(save_names, save_path=".", label_var=None):
     ax.set_ylabel("Loss")
     ax.legend()
     plt.show()
+
+    return model_names
 
 
 def load_model(save_file, save_path=".", model_cls=None, model_type=None):

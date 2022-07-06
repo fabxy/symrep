@@ -9,8 +9,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "62-a1-a2-gc-study-F00"
-sweep_id = "a1y7fbbs"
-sweep_num = 12
+sweep_id = None
+sweep_num = None
 
 # load data
 data_path = "data_1k"
@@ -26,7 +26,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # set save file
-save_file = "models/srnet_model_F00_a1_{a1:.0e}_a2_{a2:.0e}_gc_{gc:.0e}.pkl"
+save_file = "models/srnet_model_F00_a1_{a1:.0e}_a2_{a2:.0e}_gc_{gc:.0e}_max.pkl"
 
 
 # define hyperparameters
@@ -39,15 +39,15 @@ hyperparams = {
         "hid_type": ("DSN", "MLP"),
         "lat_size": 16,
         },
-    "epochs": 10000,
+    "epochs": 100000,
     "runtime": None,
     "batch_size": 64,
     "lr": 1e-4,
     "wd": 1e-4,
     "l1": 0.0,
-    "a1": 0.0,
-    "a2": 0.0,
-    "gc": 0.0,
+    "a1": 1e-5,
+    "a2": 1e-3,
+    "gc": 1e1,
     "shuffle": True,
 }
 
