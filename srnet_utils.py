@@ -5,7 +5,7 @@ import joblib
 from collections import OrderedDict
 from scipy.stats import pearsonr
 
-def plot_losses(save_names, save_path=".", excl_names=None, label_var=None):
+def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
 
     _, ax = plt.subplots()
 
