@@ -5,6 +5,7 @@ import time
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import wandb
@@ -24,7 +25,7 @@ except:
 
 class SRNet(nn.Module):
 
-    def __init__(self, in_size, out_size, hid_num=1, hid_size=100, hid_type="MLP", lat_size=25):
+    def __init__(self, in_size, out_size, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs={}, lat_size=25):
         super().__init__()
 
         # read number, size and type of hidden layers
@@ -46,6 +47,12 @@ class SRNet(nn.Module):
         else:
             hid_type1, hid_type2 = hid_type
 
+        if isinstance(hid_kwargs, dict):
+            hid_kwargs1 = hid_kwargs
+            hid_kwargs2 = hid_kwargs
+        else:
+            hid_kwargs1, hid_kwargs2 = hid_kwargs
+
         # layers from input to latent
         if hid_type1 == "MLP":
             if hid_num1 == 0:
@@ -62,7 +69,7 @@ class SRNet(nn.Module):
             self.layers1 = nn.Sequential(*layers1)
         
         elif hid_type1 == "DSN":
-            self.layers1 = SJNN(in_size, lat_size, hid_size1, hid_num1-1)
+            self.layers1 = SJNN(in_size, lat_size, hid_size1, hid_num1-1, **hid_kwargs1)
 
         # layers from latent to output
         if hid_type2 == "MLP":
@@ -80,7 +87,7 @@ class SRNet(nn.Module):
             self.layers2 = nn.Sequential(*layers2)
 
         elif hid_type2 == "DSN":
-            self.layers2 = SJNN(in_size, lat_size, hid_size2, hid_num2-1)
+            self.layers2 = SJNN(in_size, lat_size, hid_size2, hid_num2-1, **hid_kwargs2)
 
     def forward(self, in_data, get_lat=False):
 
@@ -288,11 +295,11 @@ if __name__ == '__main__':
     wandb_project = None # "first-try"
 
     # load data
-    data_path = "data"
+    data_path = "data_1k"
     
-    in_var = "X01"
+    in_var = "X00"
     lat_var = None
-    target_var = "F01"
+    target_var = "F00"
 
     mask_ext = ".mask"
     masks = joblib.load(os.path.join(data_path, in_var + mask_ext))     # TODO: create mask if file does not exist
@@ -308,18 +315,19 @@ if __name__ == '__main__':
         "arch": {
             "in_size": train_data.in_data.shape[1],
             "out_size": train_data.target_data.shape[1],
-            "hid_num": 3,
-            "hid_size": (50, 25), 
+            "hid_num": (2,0),
+            "hid_size": 32, 
             "hid_type": ("DSN", "MLP"),
-            "lat_size": 10,
+            "hid_kwargs": {"norm": F.softmax},
+            "lat_size": 3,
             },
-        "epochs": 1000,
+        "epochs": 10000,
         "runtime": None,
-        "batch_size": 50,
-        "lr": 1e-4,                                                     # TODO: adaptive learning rate?
+        "batch_size": 64,
+        "lr": 1e-4,
         "wd": 1e-4,
         "l1": 0.0,
-        "a1": 0.0, 
+        "a1": 0.0,
         "a2": 0.0,
         "gc": 0.0,
         "shuffle": True,

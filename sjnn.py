@@ -21,6 +21,7 @@ class SparseJacobianNN(nn.Module):
         act=F.relu,
         approximate_l0_with=lambda x, dim: x.abs().sum(dim=dim),
         approximate_max_with=lambda x, dim: x.pow(2).sum(dim=dim).pow(0.5),
+        norm=None,
     ):
         """
         Args:
@@ -33,6 +34,7 @@ class SparseJacobianNN(nn.Module):
             a2: weight encouraging few dependencies for each output
             approximate_l0_with: differentiable function that approximates the L0 norm of a tensor
             approximate_max_with: differentiable function that approximates the max of a tensor
+            norm: row-wise mask normalization
         """
         super(self.__class__, self).__init__()
         self.n_out = n_out
@@ -41,6 +43,7 @@ class SparseJacobianNN(nn.Module):
         self.act = act
         self.l0_func = approximate_l0_with
         self.max_func = approximate_max_with
+        self.norm = norm
         self.w = nn.ParameterList(
             [init_weights_3d(n_out, n_in, hidden)]
             + [init_weights_3d(n_out, hidden, hidden) for i in range(nlayers)]
@@ -59,7 +62,11 @@ class SparseJacobianNN(nn.Module):
 
     def get_masked_input(self, x):
         tiled = E.repeat(x, "batch n_in -> batch n_out n_in", n_out=self.n_out)
-        return tiled * self.alpha[None]
+        if self.norm:
+            tiled = tiled * self.norm(self.alpha.abs(), dim=1).unsqueeze(0)
+        else:
+            tiled = tiled * self.alpha.unsqueeze(0)
+        return tiled
 
     def sparsifying_loss(self, a1, a2):
         importances = self.alpha  # [n_out, n_in]
