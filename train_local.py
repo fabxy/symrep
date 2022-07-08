@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "63-bn-DSN-norm-a2-study-F00"
-sweep_id = "xlzqgmi3"
+sweep_id = "gx9w0nd4"
 sweep_num = 5
 
 # load data
@@ -38,7 +38,7 @@ hyperparams = {
         "hid_num": (2,0),
         "hid_size": 32, 
         "hid_type": ("DSN", "MLP"),
-        "hid_kwargs": ({"norm": F.softmax}, {}),
+        "hid_kwargs": ({"norm": "softmax"}, {}),
         "lat_size": 3,
         },
     "epochs": 10000,

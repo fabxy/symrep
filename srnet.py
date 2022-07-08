@@ -25,7 +25,7 @@ except:
 
 class SRNet(nn.Module):
 
-    def __init__(self, in_size, out_size, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs={}, lat_size=25):
+    def __init__(self, in_size, out_size, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs=None, lat_size=25):
         super().__init__()
 
         # read number, size and type of hidden layers
@@ -47,7 +47,10 @@ class SRNet(nn.Module):
         else:
             hid_type1, hid_type2 = hid_type
 
-        if isinstance(hid_kwargs, dict):
+        if hid_kwargs is None:
+            hid_kwargs1 = dict()
+            hid_kwargs2 = dict()
+        elif isinstance(hid_kwargs, dict):
             hid_kwargs1 = hid_kwargs
             hid_kwargs2 = hid_kwargs
         else:
@@ -318,7 +321,7 @@ if __name__ == '__main__':
             "hid_num": (2,0),
             "hid_size": 32, 
             "hid_type": ("DSN", "MLP"),
-            "hid_kwargs": {"norm": F.softmax},
+            "hid_kwargs": {"norm": "softmax"},
             "lat_size": 3,
             },
         "epochs": 10000,

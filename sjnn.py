@@ -43,7 +43,6 @@ class SparseJacobianNN(nn.Module):
         self.act = act
         self.l0_func = approximate_l0_with
         self.max_func = approximate_max_with
-        self.norm = norm
         self.w = nn.ParameterList(
             [init_weights_3d(n_out, n_in, hidden)]
             + [init_weights_3d(n_out, hidden, hidden) for i in range(nlayers)]
@@ -54,6 +53,10 @@ class SparseJacobianNN(nn.Module):
             + [init_weights_2d(n_out, hidden) for i in range(nlayers)]
             + [init_weights_2d(n_out, 1)]
         )
+        if norm == "softmax":
+            self.norm = F.softmax
+        else:
+            self.norm = norm
 
     def apply_layer(self, i, x):
         x = torch.einsum("oih,boi->boh", self.w[i], x)
