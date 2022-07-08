@@ -245,7 +245,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
                 else:
                     entropy = model.layers1.entropy()
 
-                var_entropy = lat_acts.var(dim=0) * entropy                         # TODO: softmax?
+                var_entropy = F.softmax(lat_acts.var(dim=0)) * entropy
                 loss += hp['e2'] * var_entropy.pow(2).sum()
 
             loss.backward()

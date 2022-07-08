@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "65-bn-DSN-norm-e2-study-F00"
-sweep_id = "tar1mwr3"
+sweep_id = "0mtvnl88"
 sweep_num = 5
 
 # load data
