@@ -65,11 +65,13 @@ class SparseJacobianNN(nn.Module):
 
     def get_masked_input(self, x):
         tiled = E.repeat(x, "batch n_in -> batch n_out n_in", n_out=self.n_out)
+
         if self.norm:
-            tiled = tiled * self.norm(self.alpha.abs(), dim=1).unsqueeze(0)
+            self.alpha_n = self.norm(self.alpha.abs(), dim=1)
         else:
-            tiled = tiled * self.alpha.unsqueeze(0)
-        return tiled
+            self.alpha_n = self.alpha
+
+        return tiled * self.alpha_n.unsqueeze(0)
 
     def sparsifying_loss(self, a1, a2):
         importances = self.alpha  # [n_out, n_in]
@@ -78,6 +80,11 @@ class SparseJacobianNN(nn.Module):
         # few_latents = self.alpha.abs().sum()
         # few_dependencies = self.alpha.pow(2).sum().pow(-1)
         return a1 * few_latents + a2 * few_dependencies
+
+    def entropy_loss(self, e1):
+        a = self.alpha_n
+        entropy = -(a * a.log2()).sum(dim=1)
+        return e1 * entropy.pow(2).sum()
 
     def forward(self, x):
         xtilde = self.get_masked_input(x)

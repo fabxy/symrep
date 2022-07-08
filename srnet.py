@@ -232,6 +232,12 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
                 else:
                     loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])      # TODO: deal with layers2
 
+            if 'e1' in hp and hp['e1'] > 0:
+                if 'gc' in hp and hp['gc'] > 0:
+                    loss += model.ghost.layers1.entropy_loss(hp['e1'])
+                else:
+                    loss += model.layers1.entropy_loss(hp['e1'])                    # TODO: deal with layers2
+
             loss.backward()
 
             optimizer.step()
@@ -332,6 +338,7 @@ if __name__ == '__main__':
         "l1": 0.0,
         "a1": 0.0,
         "a2": 0.0,
+        "e1": 0.0,
         "gc": 0.0,
         "shuffle": True,
     }
