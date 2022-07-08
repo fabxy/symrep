@@ -9,9 +9,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = None # "63-bn-DSN-norm-a2-study-F00"
-sweep_id = None # "xlzqgmi3"
-sweep_num = None # 5
+wandb_project = "63-bn-DSN-norm-a2-study-F00"
+sweep_id = "xlzqgmi3"
+sweep_num = 5
 
 # load data
 data_path = "data_1k"
