@@ -81,10 +81,11 @@ class SparseJacobianNN(nn.Module):
         # few_dependencies = self.alpha.pow(2).sum().pow(-1)
         return a1 * few_latents + a2 * few_dependencies
 
+    def entropy(self):
+        return -(self.alpha_n * self.alpha_n.log2()).sum(dim=1)
+
     def entropy_loss(self, e1):
-        a = self.alpha_n
-        entropy = -(a * a.log2()).sum(dim=1)
-        return e1 * entropy.pow(2).sum()
+        return e1 * self.entropy().pow(2).sum()
 
     def forward(self, x):
         xtilde = self.get_masked_input(x)

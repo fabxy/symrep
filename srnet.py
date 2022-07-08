@@ -236,7 +236,17 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
                 if 'gc' in hp and hp['gc'] > 0:
                     loss += model.ghost.layers1.entropy_loss(hp['e1'])
                 else:
-                    loss += model.layers1.entropy_loss(hp['e1'])                    # TODO: deal with layers2
+                    loss += model.layers1.entropy_loss(hp['e1'])
+
+            if 'e2' in hp and hp['e2'] > 0:
+                if 'gc' in hp and hp['gc'] > 0:
+                    preds, lat_acts = model.ghost(in_data, get_lat=True)
+                    entropy = model.ghost.layers1.entropy()
+                else:
+                    entropy = model.layers1.entropy()
+
+                var_entropy = lat_acts.var(dim=0) * entropy                         # TODO: softmax?
+                loss += hp['e2'] * var_entropy.pow(2).sum()
 
             loss.backward()
 
