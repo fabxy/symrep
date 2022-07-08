@@ -8,16 +8,16 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "52-a1-a2-study-F06"
-sweep_id = "cpkssxoz"
-sweep_num = 16
+wandb_project = "61-bn-DSN-F00"
+sweep_id = None
+sweep_num = None
 
 # load data
 data_path = "data_1k"
 
-in_var = "X06"
+in_var = "X00"
 lat_var = None
-target_var = "F06"
+target_var = "F00"
 
 mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
@@ -26,7 +26,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # set save file
-save_file = "models/srnet_model_F06_a1_{a1:.0e}_a2_{a2:.0e}.pkl"
+save_file = "models/srnet_model_F00_bn.pkl"
 
 
 # define hyperparameters
@@ -37,7 +37,7 @@ hyperparams = {
         "hid_num": (2,0),
         "hid_size": 32, 
         "hid_type": ("DSN", "MLP"),
-        "lat_size": 16,
+        "lat_size": 3,
         },
     "epochs": 10000,
     "runtime": None,
