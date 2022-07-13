@@ -44,8 +44,10 @@ class SparseJacobianNN(nn.Module):
         self.n_out = n_out
         if alpha is None:
             self.alpha = nn.Parameter(torch.randn(n_out, n_in))
+        elif alpha == -1:
+            self.alpha = nn.Parameter(torch.randn(n_out, n_in), requires_grad=False)
         else:
-            self.alpha = torch.Tensor(alpha)
+            self.alpha = nn.Parameter(torch.Tensor(alpha), requires_grad=False)
         self.nlayers = nlayers
         self.act = act
         self.l0_func = approximate_l0_with
@@ -61,9 +63,9 @@ class SparseJacobianNN(nn.Module):
             + [init_weights_2d(n_out, 1)]
         )
         if norm == "softmax":
-            self.norm = F.softmax
+            self.norm = lambda x: F.softmax(x.abs(), dim=1)
         else:
-            self.norm = norm
+            self.norm = nn.Identity()
         self.prune = prune
 
     def apply_layer(self, i, x):
@@ -74,15 +76,10 @@ class SparseJacobianNN(nn.Module):
     def get_masked_input(self, x):
         tiled = E.repeat(x, "batch n_in -> batch n_out n_in", n_out=self.n_out)
 
-        if self.norm:
-            self.alpha_n = self.norm(self.alpha.abs(), dim=1)
-        else:
-            self.alpha_n = self.alpha
+        mask = self.norm(self.alpha)
 
         if self.prune:
-            mask = torch.where(self.alpha_n < self.prune, torch.zeros_like(self.alpha_n), self.alpha_n)
-        else:
-            mask = self.alpha_n
+            mask = torch.where(mask < self.prune, torch.zeros_like(mask), mask)
 
         return tiled * mask.unsqueeze(0)
 
@@ -95,7 +92,8 @@ class SparseJacobianNN(nn.Module):
         return a1 * few_latents + a2 * few_dependencies
 
     def entropy(self):
-        return -(self.alpha_n * self.alpha_n.log2()).sum(dim=1)
+        alpha_norm = self.norm(self.alpha)
+        return -(alpha_norm * alpha_norm.log2()).sum(dim=1)
 
     def entropy_loss(self, e1):
         return e1 * self.entropy().pow(2).sum()

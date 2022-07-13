@@ -88,11 +88,12 @@ class SDData(Dataset):
     def __init__(self, fun_path, in_var, in_data=None):
         super().__init__()
 
+        self.in_var = in_var
+        self.path = fun_path
+
         with open(fun_path, 'r') as f:
             self.funs = [fun.strip() for fun in f]
             self.len = len(self.funs)
-
-        self.in_var = in_var
 
         if in_data is not None:
             self.fun_data = self.evaluate(self.funs, in_data)

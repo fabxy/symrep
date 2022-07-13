@@ -146,12 +146,12 @@ class SRData(Dataset):
         data = np.loadtxt(os.path.join(self.path, var + self.ext))
 
         if len(data.shape) < 2:
-            data = data.reshape(-1, 1)                                  # Q: is this necessary?
+            data = data.reshape(-1, 1)
 
         if self.mask is not None:
             data = data[self.mask]
 
-        return torch.Tensor(data).to(self.device)                       # Q: all data to device or per batch?
+        return torch.Tensor(data).to(self.device)                                                   # TODO: all data to device or per batch?
 
     def __len__(self):
         return self.target_data.shape[0]
@@ -161,10 +161,11 @@ class SRData(Dataset):
 
 
 def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
-    """
-    TODO: 
-    - Implement restart option
-    """
+
+    # load state for restart
+    if load_file:
+        state = joblib.load(load_file)
+        hyperparams = dict(state['hyperparams'], **hyperparams)
 
     # initialize wandb
     if wandb_project:
@@ -203,17 +204,37 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
         critic.train()
 
-    # define training loop
+    # monitor statistics
     train_loss = []
     val_loss = []
     stime = time.time()
     times = []
+    epoch = 0
+    
+    # restart training                                                                              # TODO: check out how to continue a run in wandb
+    if load_file:
+        model.load_state_dict(state['model_state'])
+        optimizer.load_state_dict(state['optimizer_state'])
+        
+        if 'sd' in hp and hp['sd'] > 0:
+            critic.load_state_dict(state['disc_state'])
+            critic.optimizer.load_state_dict(state['disc_opt_state'])
 
-    # if wandb_project:                                                 # NOTE: watching gradients and parameters is too slow
+        train_loss = state['train_loss']
+        val_loss = state['val_loss']
+        times = state['times']
+        stime = time.time() - times[-1]
+        epoch = len(train_loss)
+    
+        torch.set_rng_state(state['seed_state'])
+    
+    # NOTE: watching gradients and parameters is too slow
+    # if wandb_project:
     #     batch_num = int(np.ceil(len(train_data) / hp["batch_size"]))
     #     wandb.watch(model, loss_fun, log="all", log_freq=batch_num)
 
-    t = trange(hp['epochs'], desc="Epoch")
+    # define training loop
+    t = trange(epoch, hp['epochs'], desc="Epoch")
     for epoch in t:
 
         batch_loss = []
@@ -236,7 +257,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 if 'gc' in hp and hp['gc'] > 0:
                     loss += model.ghost.layers1.sparsifying_loss(hp['a1'], hp['a2'])
                 else:
-                    loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])      # TODO: deal with layers2
+                    loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])                      # TODO: deal with layers2
 
             if 'e1' in hp and hp['e1'] > 0:
                 if 'gc' in hp and hp['gc'] > 0:
@@ -303,6 +324,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         print(f"Total validation loss: {total_val_loss:.3e}")
 
     state = {
+        "seed_state": torch.get_rng_state(),
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "hyperparams": hp._items if wandb_project else hp,
@@ -315,11 +337,19 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         "in_var": train_data.in_var,
         "target_var": train_data.target_var,
         }
-    
+
+    if 'sd' in hp and hp['sd'] > 0:
+        state_update = {
+            "disc_state": critic.state_dict(),
+            "disc_opt_state": critic.optimizer.state_dict(),
+            "fun_path": disc_data.path,
+        }
+        state.update(state_update)
+
     if save_file:
         save_file = save_file.format(**hp, **hp['arch'])
-        os.makedirs(os.path.dirname(save_file), exist_ok=True)
-        joblib.dump(state, save_file)                                   # TODO: consider device when saving?
+        os.makedirs(os.path.dirname(os.path.abspath(save_file)), exist_ok=True)
+        joblib.dump(state, save_file)                                                               # TODO: consider device when saving?
         
         if wandb_project:
             wandb.save(save_file)
@@ -346,20 +376,21 @@ if __name__ == '__main__':
     target_var = "F00"
 
     mask_ext = ".mask"
-    masks = joblib.load(os.path.join(data_path, in_var + mask_ext))     # TODO: create mask if file does not exist
+    masks = joblib.load(os.path.join(data_path, in_var + mask_ext))                                 # TODO: create mask if file does not exist
 
     train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = "funs/F00.lib"
+    fun_path = None # "funs/F00_v1.lib"
     
     if fun_path:
         disc_data = SDData(fun_path, in_var, train_data.in_data)
     else:
         disc_data = None
-
-    # set save file
+    
+    # set load and save file
+    load_file = None
     save_file = None
 
     # define hyperparameters
@@ -371,15 +402,16 @@ if __name__ == '__main__':
             "hid_size": 32, 
             "hid_type": ("DSN", "MLP"),
             "hid_kwargs": {
-                # "norm": "softmax",
-                "alpha": [[1,0], [1,1], [0,1]],                         # TODO: create alpha with requires_grad=False if -1
+                "alpha": None,
+                "norm": None,
+                "prune": None,
                 },
             "lat_size": 3,
             },
         "epochs": 1000,
         "runtime": None,
-        "batch_size": train_data.target_data.shape[0],
-        "shuffle": False,
+        "batch_size": 100,
+        "shuffle": True,
         "lr": 1e-4,
         "wd": 1e-4,
         "l1": 0.0,
@@ -388,15 +420,15 @@ if __name__ == '__main__':
         "e1": 0.0,
         "e2": 0.0,
         "gc": 0.0,
-        "sd": 1e-4,
+        "sd": 0.0,
         "disc": {
             "hid_num": 2,
             "hid_size": 128,
-            "lr": 3e-4,
-            "wd": 1e-6,
+            "lr": 1e-4,
+            "wd": 1e-4,
             "iters": 5,
-            "gp": 1e-3,
+            "gp": 1e-4,
         },
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, save_file=save_file, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, device=device, wandb_project=wandb_project)
