@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import joblib
 from srnet import SRNet, SRData, run_training
+from sdnet import SDNet, SDData
 import wandb
 
 # set device
@@ -10,8 +11,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = None # "65-bn-DSN-norm-e2-study-F00"
-sweep_id = None # "0mtvnl88"
-sweep_num = None # 5
+sweep_id = None
+sweep_num = None
 
 # load data
 data_path = "data_1k"
@@ -26,9 +27,17 @@ masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
 train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
-# set save file
-save_file = "models/srnet_model_F00_bn_norm_prune_5e-02_e2_1e-02.pkl" # "models/srnet_model_F00_bn_norm_e2_{e2:.0e}.pkl"
+# create discriminator data
+fun_path = "funs/F00_v1.lib"
 
+if fun_path:
+    disc_data = SDData(fun_path, in_var, train_data.in_data)
+else:
+    disc_data = None
+
+# set load and save file
+load_file = None
+save_file = "models/srnet_model_F00_bn_norm_sd_{sd:.0e}_test.pkl"
 
 # define hyperparameters
 hyperparams = {
@@ -38,25 +47,38 @@ hyperparams = {
         "hid_num": (2,0),
         "hid_size": 32, 
         "hid_type": ("DSN", "MLP"),
-        "hid_kwargs": ({"norm": "softmax", "prune": 0.05}, {}),
+        "hid_kwargs": {
+            "alpha": None,
+            "norm": "softmax",
+            "prune": None,
+            },
         "lat_size": 3,
         },
-    "epochs": 10000,
+    "epochs": 20000,
     "runtime": None,
-    "batch_size": 64,
+    "batch_size": train_data.in_data.shape[0],
+    "shuffle": False,
     "lr": 1e-4,
     "wd": 1e-4,
     "l1": 0.0,
     "a1": 0.0,
     "a2": 0.0,
-    "e1": 1e-2,
+    "e1": 0.0,
     "e2": 0.0,
     "gc": 0.0,
-    "shuffle": True,
+    "sd": 1e-4,
+    "disc": {
+        "hid_num": 2,
+        "hid_size": 128,
+        "lr": 1e-4,
+        "wd": 1e-4,
+        "iters": 5,
+        "gp": 1e-4,
+    },
 }
 
 def train():
-    run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, device=device, wandb_project=wandb_project)
 
 if __name__ == "__main__":
 
