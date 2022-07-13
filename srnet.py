@@ -13,6 +13,7 @@ import wandb
 from collections.abc import Iterable
 from sjnn import SparseJacobianNN as SJNN
 from ghost import GhostAdam, GhostWrapper
+from sdnet import SDNet, SDData
 
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -159,7 +160,7 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
+def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
     """
     TODO: 
     - Implement restart option
@@ -196,6 +197,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
         optimizer = GhostAdam(model, lr=hp['lr'], weight_decay=hp['wd'], ghost_coeff=hp['gc'])
     else:
         optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
+
+    # create discriminator
+    if 'sd' in hp and hp['sd'] > 0:
+        critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
+        critic.train()
 
     # define training loop
     train_loss = []
@@ -247,6 +253,25 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, load_file=No
 
                 var_entropy = F.softmax(lat_acts.var(dim=0)) * entropy
                 loss += hp['e2'] * var_entropy.pow(2).sum()
+
+            if 'sd' in hp and hp['sd'] > 0:
+                
+                if 'gc' in hp and hp['gc'] > 0:
+                    preds, lat_acts = model.ghost(in_data, get_lat=True)
+
+                # get real and fake data
+                try:
+                    data_real = disc_data.get(lat_acts.shape[1])
+                except:
+                    data_real = disc_data.get(lat_acts.shape[1], in_data)
+                
+                data_fake = lat_acts.detach().T
+
+                # train discriminator
+                critic.fit(data_real, data_fake)
+                
+                # regularize with critic loss
+                loss += -1 * hp['sd'] * critic.loss(lat_acts.T)
 
             loss.backward()
 
@@ -326,6 +351,14 @@ if __name__ == '__main__':
     train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
+    # create discriminator data
+    fun_path = "funs/F00.lib"
+    
+    if fun_path:
+        disc_data = SDData(fun_path, in_var, train_data.in_data)
+    else:
+        disc_data = None
+
     # set save file
     save_file = None
 
@@ -337,12 +370,16 @@ if __name__ == '__main__':
             "hid_num": (2,0),
             "hid_size": 32, 
             "hid_type": ("DSN", "MLP"),
-            "hid_kwargs": {"norm": "softmax"},
+            "hid_kwargs": {
+                # "norm": "softmax",
+                "alpha": [[1,0], [1,1], [0,1]],                         # TODO: create alpha with requires_grad=False if -1
+                },
             "lat_size": 3,
             },
-        "epochs": 10000,
+        "epochs": 1000,
         "runtime": None,
-        "batch_size": 64,
+        "batch_size": train_data.target_data.shape[0],
+        "shuffle": False,
         "lr": 1e-4,
         "wd": 1e-4,
         "l1": 0.0,
@@ -351,7 +388,15 @@ if __name__ == '__main__':
         "e1": 0.0,
         "e2": 0.0,
         "gc": 0.0,
-        "shuffle": True,
+        "sd": 1e-4,
+        "disc": {
+            "hid_num": 2,
+            "hid_size": 128,
+            "lr": 3e-4,
+            "wd": 1e-6,
+            "iters": 5,
+            "gp": 1e-3,
+        },
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, save_file=save_file, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, save_file=save_file, device=device, wandb_project=wandb_project)

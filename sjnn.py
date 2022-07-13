@@ -22,6 +22,8 @@ class SparseJacobianNN(nn.Module):
         approximate_l0_with=lambda x, dim: x.abs().sum(dim=dim),
         approximate_max_with=lambda x, dim: x.pow(2).sum(dim=dim).pow(0.5),
         norm=None,
+        prune=None,
+        alpha=None,
     ):
         """
         Args:
@@ -35,10 +37,15 @@ class SparseJacobianNN(nn.Module):
             approximate_l0_with: differentiable function that approximates the L0 norm of a tensor
             approximate_max_with: differentiable function that approximates the max of a tensor
             norm: row-wise mask normalization
+            prune: set normalized mask values below prune value to zero
+            alpha: set fixed mask values
         """
         super(self.__class__, self).__init__()
         self.n_out = n_out
-        self.alpha = nn.Parameter(torch.randn(n_out, n_in))
+        if alpha is None:
+            self.alpha = nn.Parameter(torch.randn(n_out, n_in))
+        else:
+            self.alpha = torch.Tensor(alpha)
         self.nlayers = nlayers
         self.act = act
         self.l0_func = approximate_l0_with
@@ -57,6 +64,7 @@ class SparseJacobianNN(nn.Module):
             self.norm = F.softmax
         else:
             self.norm = norm
+        self.prune = prune
 
     def apply_layer(self, i, x):
         x = torch.einsum("oih,boi->boh", self.w[i], x)
@@ -71,7 +79,12 @@ class SparseJacobianNN(nn.Module):
         else:
             self.alpha_n = self.alpha
 
-        return tiled * self.alpha_n.unsqueeze(0)
+        if self.prune:
+            mask = torch.where(self.alpha_n < self.prune, torch.zeros_like(self.alpha_n), self.alpha_n)
+        else:
+            mask = self.alpha_n
+
+        return tiled * mask.unsqueeze(0)
 
     def sparsifying_loss(self, a1, a2):
         importances = self.alpha  # [n_out, n_in]
