@@ -56,10 +56,7 @@ class SDNet(nn.Module):
 
 
     def fit(self, data_real, data_fake):
-
-        # for p in self.parameters():
-        #     p.requires_grad = True
-        
+      
         losses = []
         for _ in range(self.iters):
 
@@ -76,9 +73,6 @@ class SDNet(nn.Module):
             self.optimizer.step()
 
             losses.append(loss.item())
-
-        # for p in self.parameters():
-        #     p.requires_grad = False
 
         return losses
 

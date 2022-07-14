@@ -246,40 +246,27 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
             loss = loss_fun(preds, target_data)
 
-            if 'l1' in hp and hp['l1'] > 0:
-                
-                if 'gc' in hp and hp['gc'] > 0:
-                    preds, lat_acts = model.ghost(in_data, get_lat=True)
-                    
+            if 'gc' in hp and hp['gc'] > 0:
+                reg_model = model.ghost
+                preds, lat_acts = reg_model(in_data, get_lat=True)
+            else:
+                reg_model = model
+
+            if 'l1' in hp and hp['l1'] > 0:              
                 loss += hp['l1'] * torch.sum(torch.abs(lat_acts)) / lat_acts.shape[1]
 
             if ('a1' in hp and 'a2' in hp) and (hp['a1'] > 0 or hp['a2'] > 0):
-                if 'gc' in hp and hp['gc'] > 0:
-                    loss += model.ghost.layers1.sparsifying_loss(hp['a1'], hp['a2'])
-                else:
-                    loss += model.layers1.sparsifying_loss(hp['a1'], hp['a2'])                      # TODO: deal with layers2
+                loss += reg_model.layers1.sparsifying_loss(hp['a1'], hp['a2'])                      # TODO: deal with layers2
 
             if 'e1' in hp and hp['e1'] > 0:
-                if 'gc' in hp and hp['gc'] > 0:
-                    loss += model.ghost.layers1.entropy_loss(hp['e1'])
-                else:
-                    loss += model.layers1.entropy_loss(hp['e1'])
+                loss += reg_model.layers1.entropy_loss(hp['e1'])
 
-            if 'e2' in hp and hp['e2'] > 0:
-                if 'gc' in hp and hp['gc'] > 0:
-                    preds, lat_acts = model.ghost(in_data, get_lat=True)
-                    entropy = model.ghost.layers1.entropy()
-                else:
-                    entropy = model.layers1.entropy()
-
+            if 'e2' in hp and hp['e2'] > 0:                    
+                entropy = reg_model.layers1.entropy()
                 var_entropy = F.softmax(lat_acts.var(dim=0)) * entropy
                 loss += hp['e2'] * var_entropy.pow(2).sum()
 
             if 'sd' in hp and hp['sd'] > 0:
-                
-                if 'gc' in hp and hp['gc'] > 0:
-                    preds, lat_acts = model.ghost(in_data, get_lat=True)
-
                 # get real and fake data
                 try:
                     data_real = disc_data.get(lat_acts.shape[1])

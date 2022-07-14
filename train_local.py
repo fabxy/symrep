@@ -10,9 +10,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = None # "65-bn-DSN-norm-e2-study-F00"
-sweep_id = None
-sweep_num = None
+wandb_project = "92-bn-DSN-sd-study-F00"
+sweep_id = "3uczgith"
+sweep_num = 10
 
 # load data
 data_path = "data_1k"
@@ -37,7 +37,7 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_bn_norm_sd_{sd:.0e}_test.pkl"
+save_file = "models/srnet_model_F00_bn_norm_sd_study.pkl"
 
 # define hyperparameters
 hyperparams = {
@@ -54,7 +54,7 @@ hyperparams = {
             },
         "lat_size": 3,
         },
-    "epochs": 20000,
+    "epochs": 30000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
