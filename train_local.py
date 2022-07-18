@@ -10,8 +10,8 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "92-bn-DSN-sd-study-F00"
-sweep_id = "3uczgith"
+wandb_project = "92-bn-DSN-sd-study-F00_v2"
+sweep_id = "8empws65"
 sweep_num = 10
 
 # load data
@@ -28,7 +28,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # create discriminator data
-fun_path = "funs/F00_v1.lib"
+fun_path = "funs/F00_v2.lib"
 
 if fun_path:
     disc_data = SDData(fun_path, in_var, train_data.in_data)
@@ -37,7 +37,7 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_bn_norm_sd_study.pkl"
+save_file = "models/srnet_model_F00_v2_bn_norm_sd_study.pkl"
 
 # define hyperparameters
 hyperparams = {

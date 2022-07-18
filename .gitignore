@@ -1,5 +1,6 @@
 # Custom
 models/
+results/
 wandb/
 hall_of_fame_*
 
