@@ -160,7 +160,7 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, save_file=None, device=torch.device("cpu"), wandb_project=None):
+def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, save_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
 
     # load state for restart
     if load_file:
@@ -207,6 +207,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     # monitor statistics
     train_loss = []
     val_loss = []
+    corr_mat = []
     stime = time.time()
     times = []
     epoch = 0
@@ -217,16 +218,23 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         optimizer.load_state_dict(state['optimizer_state'])
         
         if 'sd' in hp and hp['sd'] > 0:
-            critic.load_state_dict(state['disc_state'])
-            critic.optimizer.load_state_dict(state['disc_opt_state'])
+            try:
+                critic.load_state_dict(state['disc_state'])
+                critic.optimizer.load_state_dict(state['disc_opt_state'])
+            except:
+                print("Warning: Loading critic parameters failed.")
 
         train_loss = state['train_loss']
         val_loss = state['val_loss']
         times = state['times']
         stime = time.time() - times[-1]
         epoch = len(train_loss)
-    
-        torch.set_rng_state(state['seed_state'])
+
+        if 'corr_mat' in state:
+            corr_mat = state['corr_mat']
+
+        if 'seed_state' in state:
+            torch.set_rng_state(state['seed_state'])
     
     # NOTE: watching gradients and parameters is too slow
     # if wandb_project:
@@ -288,16 +296,30 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             batch_loss.append(loss.item())
 
         train_loss.append(np.mean(batch_loss))
-
-        model.eval()
-        with torch.no_grad():
-            val_loss.append(loss_fun(model(val_data.in_data), val_data.target_data).item())
-        model.train()
         times.append(time.time() - stime)
 
-        t.set_postfix({"train_loss": f"{train_loss[-1]:.2e}", "val_loss": f"{val_loss[-1]:.2e}"})
-        if wandb_project:
-            wandb.log({"epoch": epoch, "time": times[-1], "train_loss": train_loss[-1], "val_loss": val_loss[-1]})
+        if epoch % log_freq == 0:
+            model.eval()
+            with torch.no_grad():
+                preds, lat_acts = model(val_data.in_data, get_lat=True)
+                val_loss.append(loss_fun(preds, val_data.target_data).item())
+                
+                if val_data.lat_data is not None:
+                    ls = lat_acts.shape[1]
+                    corr = torch.corrcoef(torch.hstack((lat_acts, val_data.lat_data)).T)            # TODO: train or val correlation?
+                    corr_mat.append(corr[:ls, -ls:])
+
+            model.train()
+        
+            t_update = {"train_loss": train_loss[-1], "val_loss": val_loss[-1]}
+            if val_data.lat_data is not None:
+                t_update["min_corr"] = corr_mat[-1].abs().max(dim=1).values.min()
+
+            t.set_postfix({k: f"{v:.2e}" if v < 0.1 else f"{v:.2f}" for k, v in t_update.items()})
+            if wandb_project:
+                t_update["epoch"] = epoch
+                t_update["time"] = times[-1]
+                wandb.log(t_update)
         
         if hp["runtime"]:
             if times[-1] > hp["runtime"]:
@@ -317,6 +339,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         "hyperparams": hp._items if wandb_project else hp,
         "train_loss": train_loss,
         "val_loss": val_loss,
+        "corr_mat": corr_mat,
         "total_train_loss": total_train_loss,
         "total_val_loss": total_val_loss,
         "times": times,
@@ -359,7 +382,7 @@ if __name__ == '__main__':
     data_path = "data_1k"
     
     in_var = "X00"
-    lat_var = None
+    lat_var = "G00"
     target_var = "F00"
 
     mask_ext = ".mask"
@@ -379,6 +402,7 @@ if __name__ == '__main__':
     # set load and save file
     load_file = None
     save_file = None
+    log_freq = 1
 
     # define hyperparameters
     hyperparams = {
@@ -418,4 +442,4 @@ if __name__ == '__main__':
         },
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)

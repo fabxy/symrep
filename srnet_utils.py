@@ -108,19 +108,22 @@ def get_node_order(acts, show=False):
     return node_order
 
 
-def node_correlations(acts, nodes, data_tup, nonzero=False):
+def node_correlations(acts, nodes, data_tup, show=True):
+
+    corr_mat = []
     for n in nodes:
-        print(f"\nNode {n}")
-
-        if nonzero:
-            mask = (acts[:,n].abs() > 0.0).tolist()
-
+        if show:
+            print(f"\nNode {n}")
+        
+        corr = []
         for d in data_tup:
-            
-            corr_info = f"{pearsonr(acts[:,n], d[1])[0]:.4f}"
-            if nonzero:
-                corr_info += f"/{pearsonr(acts[mask,n], d[1][mask])[0]:.4f}"
-            print(f"corr(n{n}, {d[0]}): {corr_info}")
+            corr.append(pearsonr(acts[:,n], d[1])[0])
+            if show:
+                print(f"corr(n{n}, {d[0]}): {corr[-1]:.4f}")
+    
+        corr_mat.append(corr)
+    
+    return corr_mat    
 
 
 def plot_acts(x_data, y_data, z_data, acts=None, nodes=[], model=None, bias=False, nonzero=False, agg=False, plot_size=500):

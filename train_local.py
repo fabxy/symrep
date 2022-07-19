@@ -10,15 +10,15 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "92-bn-DSN-sd-study-F00_v2"
-sweep_id = "8empws65"
+wandb_project = "94-bn-mask-DSN-sd-study-F00_v2"
+sweep_id = "hvuomrrb"
 sweep_num = 10
 
 # load data
 data_path = "data_1k"
 
 in_var = "X00"
-lat_var = None
+lat_var = "G00"
 target_var = "F00"
 
 mask_ext = ".mask"
@@ -37,7 +37,8 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_v2_bn_norm_sd_study.pkl"
+save_file = "models/srnet_model_F00_v2_bn_mask_sd_study.pkl"
+log_freq = 25
 
 # define hyperparameters
 hyperparams = {
@@ -48,8 +49,8 @@ hyperparams = {
         "hid_size": 32, 
         "hid_type": ("DSN", "MLP"),
         "hid_kwargs": {
-            "alpha": None,
-            "norm": "softmax",
+            "alpha": [[1,0],[0,1],[1,1]],
+            "norm": None,
             "prune": None,
             },
         "lat_size": 3,
@@ -78,7 +79,7 @@ hyperparams = {
 }
 
 def train():
-    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, device=device, wandb_project=wandb_project)
+    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
 
 if __name__ == "__main__":
 
