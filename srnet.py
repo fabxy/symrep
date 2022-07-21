@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from sjnn import SparseJacobianNN as SJNN
 from ghost import GhostAdam, GhostWrapper
 from sdnet import SDNet, SDData
+import srnet_utils as ut
 
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -282,12 +283,23 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                     data_real = disc_data.get(lat_acts.shape[1], in_data)
                 
                 data_fake = lat_acts.detach().T
+                
+                # extend real and fake data
+                ext_data = []
+                try:
+                    if hp['disc']['emb_size'] > 1:
+                        ext_data.append(in_data)
+                except: pass
 
+                data_real = ut.extend(data_real, *ext_data)
+                data_fake = ut.extend(data_fake, *ext_data)
+                
                 # train discriminator
                 critic.fit(data_real, data_fake)
                 
                 # regularize with critic loss
-                loss += -1 * hp['sd'] * critic.loss(lat_acts.T)
+                data_acts = ut.extend(lat_acts.T, *ext_data)
+                loss += -1 * hp['sd'] * critic.loss(data_acts)
 
             loss.backward()
 
@@ -298,7 +310,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         train_loss.append(np.mean(batch_loss))
         times.append(time.time() - stime)
 
-        if epoch % log_freq == 0:
+        if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
             model.eval()
             with torch.no_grad():
                 preds, lat_acts = model(val_data.in_data, get_lat=True)
@@ -392,7 +404,7 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = None # "funs/F00_v1.lib"
+    fun_path = "funs/F00_v2.lib"
     
     if fun_path:
         disc_data = SDData(fun_path, in_var, train_data.in_data)
@@ -413,16 +425,16 @@ if __name__ == '__main__':
             "hid_size": 32, 
             "hid_type": ("DSN", "MLP"),
             "hid_kwargs": {
-                "alpha": None,
+                "alpha": [[1,0],[0,1],[1,1]],
                 "norm": None,
                 "prune": None,
                 },
             "lat_size": 3,
             },
-        "epochs": 1000,
+        "epochs": 30000,
         "runtime": None,
-        "batch_size": 100,
-        "shuffle": True,
+        "batch_size": train_data.in_data.shape[0],
+        "shuffle": False,
         "lr": 1e-4,
         "wd": 1e-4,
         "l1": 0.0,
@@ -431,14 +443,15 @@ if __name__ == '__main__':
         "e1": 0.0,
         "e2": 0.0,
         "gc": 0.0,
-        "sd": 0.0,
+        "sd": 1e-5,
         "disc": {
-            "hid_num": 2,
+            "hid_num": 6,
             "hid_size": 128,
-            "lr": 1e-4,
+            "emb_size": None,
+            "lr": 1e-3,
             "wd": 1e-4,
             "iters": 5,
-            "gp": 1e-4,
+            "gp": 1e-5,
         },
     }
 

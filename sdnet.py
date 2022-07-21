@@ -9,37 +9,90 @@ from torch.utils.data import Dataset
 import torch.optim as optim
 from torch.autograd import Variable, grad
 
+from collections.abc import Iterable
+
 class SDNet(nn.Module):
 
-    def __init__(self, in_size, hid_num=1, hid_size=100, lr=1e-4, wd=1e-7, iters=5, gp=1e-3):
+    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, iters=5, gp=1e-3):
         super().__init__()
 
-        if not hid_num:
-            layers = [nn.Linear(in_size, 1)]
+        self.in_size = in_size
+
+        if not isinstance(hid_num, Iterable):
+            hid_num1 = hid_num
+            hid_num2 = hid_num
         else:
-            layers = [nn.Linear(in_size, hid_size), nn.ReLU()]
+            hid_num1, hid_num2 = hid_num
 
-            for _ in range(hid_num - 1):
-                layers.append(nn.Linear(hid_size, hid_size))
-                layers.append(nn.ReLU())
+        if not isinstance(hid_size, Iterable):
+            hid_size1 = hid_size
+            hid_size2 = hid_size
+        else:
+            hid_size1, hid_size2 = hid_size
 
-            layers.append(nn.Linear(hid_size, 1))
+        if emb_size is None or emb_size <= 1:
+            self.emb_size = 1
+        else:
+            self.emb_size = emb_size
 
-        self.layers = nn.Sequential(*layers)
+        # embedding layers
+        if self.emb_size == 1:
+            self.layers1 = nn.Identity()
+        else:
+            if not hid_num1:
+                layers1 = [nn.Linear(self.emb_size, 1)]
+            else:
+                layers1 = [nn.Linear(self.emb_size, hid_size1), nn.ReLU()]
+
+                for _ in range(hid_num1 - 1):
+                    layers1.append(nn.Linear(hid_size1, hid_size1))
+                    layers1.append(nn.ReLU())
+
+                layers1.append(nn.Linear(hid_size1, 1))
+
+            self.layers1 = nn.Sequential(*layers1)
+
+        # discriminator layers
+        if not hid_num2:
+            layers2 = [nn.Linear(self.in_size, 1)]
+        else:
+            layers2 = [nn.Linear(self.in_size, hid_size2), nn.ReLU()]
+
+            for _ in range(hid_num2 - 1):
+                layers2.append(nn.Linear(hid_size2, hid_size2))
+                layers2.append(nn.ReLU())
+
+            layers2.append(nn.Linear(hid_size2, 1))
+
+        self.layers2 = nn.Sequential(*layers2)
+        
         self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=wd)
         self.iters = iters
         self.gp = gp
 
     def forward(self, x):
-        return self.layers(x)
+        
+        # embedding
+        if self.emb_size > 1:
+            x = x.reshape(-1, self.emb_size)
+            x = self.layers1(x)
+            x = x.reshape(-1, self.in_size)
+        
+        return self.layers2(x)
 
     def loss(self, x):
         return self.forward(x).mean()
 
     def gradient_penalty(self, data_real, data_fake):
         
-        alpha = torch.rand_like(data_real[:,:1])
-        interp = alpha * data_real + (1 - alpha) * data_fake
+        try:
+            eps = torch.rand_like(data_real[:,:1,:1])
+            grad_dim = (1,2)
+        except:
+            eps = torch.rand_like(data_real[:,:1])
+            grad_dim = 1
+  
+        interp = eps * data_real + (1 - eps) * data_fake
         interp = Variable(interp, requires_grad=True)
 
         pred = self.forward(interp)
@@ -52,7 +105,7 @@ class SDNet(nn.Module):
             retain_graph=True,
         )[0]
         
-        return (gradient.norm(2, dim=1) - 1).pow(2).mean()
+        return (gradient.norm(2, dim=grad_dim) - 1).pow(2).mean()
 
 
     def fit(self, data_real, data_fake):
@@ -64,9 +117,10 @@ class SDNet(nn.Module):
 
             loss_real = -self.loss(data_real)
             loss_fake = self.loss(data_fake)
-            loss_gp = self.gradient_penalty(data_real, data_fake)
-
-            loss = loss_real + loss_fake + self.gp * loss_gp
+            loss = loss_real + loss_fake
+            
+            if self.gp:
+                loss += self.gradient_penalty(data_real, data_fake)
 
             loss.backward()
 

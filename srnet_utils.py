@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import joblib
 from collections import OrderedDict
 from scipy.stats import pearsonr
+import torch
 
 def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
 
@@ -28,7 +29,11 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
                 lines = ax.plot(state['train_loss'], label=label)
 
                 # plot validation loss
-                ax.plot(state['val_loss'], '--', color=lines[-1].get_color())
+                epochs = len(state['train_loss'])
+                logs = len(state['val_loss'])
+                log_freq = int(np.ceil(epochs / logs))
+                x_data = np.arange(logs) * log_freq
+                ax.plot(x_data, state['val_loss'], '--', color=lines[-1].get_color())
 
     if label_var:
         ax.set_title('/'.join(label_var))
@@ -168,3 +173,20 @@ def plot_acts(x_data, y_data, z_data, acts=None, nodes=[], model=None, bias=Fals
 
     ax.legend()
     plt.show()
+
+
+def extend(org_data, *args):
+
+    if len(args) == 0:
+        return org_data
+    
+    org_data = org_data.unsqueeze(-1)
+
+    for ext_data in args:
+        if len(ext_data.shape) == 2:
+            ext_data = ext_data.unsqueeze(0).repeat(3,1,1)
+            org_data = torch.cat((org_data, ext_data), dim=2)
+        else:
+            raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
+    
+    return org_data
