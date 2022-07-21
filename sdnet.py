@@ -120,7 +120,7 @@ class SDNet(nn.Module):
             loss = loss_real + loss_fake
             
             if self.gp:
-                loss += self.gradient_penalty(data_real, data_fake)
+                loss += self.gp * self.gradient_penalty(data_real, data_fake)
 
             loss.backward()
 

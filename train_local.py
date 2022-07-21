@@ -10,9 +10,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "94-bn-mask-DSN-sd-study-F00_v2"
-sweep_id = "hvuomrrb"
-sweep_num = 10
+wandb_project = None # "94-bn-mask-DSN-sd-study-F00_v2"
+sweep_id = None # "hvuomrrb"
+sweep_num = None # 10
 
 # load data
 data_path = "data_1k"
@@ -38,7 +38,7 @@ else:
 # set load and save file
 load_file = None
 save_file = "models/srnet_model_F00_v2_bn_mask_sd_study.pkl"
-log_freq = 25
+log_freq = 1
 
 # define hyperparameters
 hyperparams = {
@@ -55,7 +55,7 @@ hyperparams = {
             },
         "lat_size": 3,
         },
-    "epochs": 30000,
+    "epochs": 1001,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
@@ -67,14 +67,14 @@ hyperparams = {
     "e1": 0.0,
     "e2": 0.0,
     "gc": 0.0,
-    "sd": 1e-4,
+    "sd": 1e-5,
     "disc": {
-        "hid_num": 2,
+        "hid_num": 6,
         "hid_size": 128,
-        "lr": 1e-4,
+        "lr": 1e-3,
         "wd": 1e-4,
         "iters": 5,
-        "gp": 1e-4,
+        "gp": 1e-5,
     },
 }
 
