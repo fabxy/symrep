@@ -1,6 +1,5 @@
 import os
 import torch
-import torch.nn.functional as F
 import joblib
 from srnet import SRNet, SRData, run_training
 from sdnet import SDNet, SDData
@@ -10,9 +9,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = None # "94-bn-mask-DSN-sd-study-F00_v2"
-sweep_id = None # "hvuomrrb"
-sweep_num = None # 10
+wandb_project = "102-bn-mask-DSN-emb-study-F00_v2"
+sweep_id = "h0udx1nf"
+sweep_num = 10
 
 # load data
 data_path = "data_1k"
@@ -37,8 +36,8 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_v2_bn_mask_sd_study.pkl"
-log_freq = 1
+save_file = "srnet_model_F00_v2_bn_mask_emb_study.pkl"
+log_freq = 25
 
 # define hyperparameters
 hyperparams = {
@@ -55,7 +54,7 @@ hyperparams = {
             },
         "lat_size": 3,
         },
-    "epochs": 1001,
+    "epochs": 30000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
@@ -67,10 +66,11 @@ hyperparams = {
     "e1": 0.0,
     "e2": 0.0,
     "gc": 0.0,
-    "sd": 1e-5,
+    "sd": 1e-7,
     "disc": {
-        "hid_num": 6,
-        "hid_size": 128,
+        "hid_num": (1,3),
+        "hid_size": (32,128),
+        "emb_size": train_data.in_data.shape[1] + 1,
         "lr": 1e-3,
         "wd": 1e-4,
         "iters": 5,
