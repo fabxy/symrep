@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "102-bn-mask-DSN-emb-study-F00_v2"
-sweep_id = "h0udx1nf"
+sweep_id = "vbdot9kb"
 sweep_num = 10
 
 # load data
@@ -36,7 +36,7 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "srnet_model_F00_v2_bn_mask_emb_study.pkl"
+save_file = "models/srnet_model_F00_v2_bn_mask_emb_study.pkl"
 log_freq = 25
 
 # define hyperparameters
