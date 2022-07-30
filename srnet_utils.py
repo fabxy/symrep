@@ -73,6 +73,17 @@ def load_model(save_file, save_path=".", model_cls=None, model_type=None):
     return model
 
 
+def save_preds(data, var_name, save_path=".", model_name=None):
+    
+    # save predictions data
+    np.savetxt(os.path.join(save_path, var_name + '.gz'), data.numpy())
+
+    # save model name
+    if model_name:
+        with open(os.path.join(save_path, var_name + '.info'), "w") as f:
+            f.write(model_name + '\n')
+
+
 def get_param_diff(save_file, save_path=".", show=False):
     """Compare live and ghost model parameters."""
 

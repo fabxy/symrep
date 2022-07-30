@@ -82,13 +82,14 @@ class SDNet(nn.Module):
     def gradient_penalty(self, data_real, data_fake):
         
         try:
-            eps = torch.rand_like(data_real[:,:1,:1])
+            eps = torch.rand_like(data_fake[:,:1,:1])
             grad_dim = (1,2)
         except:
-            eps = torch.rand_like(data_real[:,:1])
+            eps = torch.rand_like(data_fake[:,:1])
             grad_dim = 1
-  
-        interp = eps * data_real + (1 - eps) * data_fake
+
+        lat_size = data_fake.shape[0]
+        interp = eps * data_real[:lat_size] + (1 - eps) * data_fake
         interp = Variable(interp, requires_grad=True)
 
         pred = self.forward(interp)
@@ -129,11 +130,12 @@ class SDNet(nn.Module):
 
 class SDData(Dataset):
 
-    def __init__(self, fun_path, in_var, in_data=None):
+    def __init__(self, fun_path, in_var, in_data=None, shuffle=True):
         super().__init__()
 
         self.in_var = in_var
         self.path = fun_path
+        self.shuffle = shuffle
 
         with open(fun_path, 'r') as f:
             self.funs = [fun.strip() for fun in f]
@@ -153,7 +155,10 @@ class SDData(Dataset):
         if fun_num is None:
             fun_num = self.len
         
-        idxs = torch.randperm(self.len)[:fun_num]
+        if self.shuffle:
+            idxs = torch.randperm(self.len)[:fun_num]
+        else:
+            idxs = torch.arange(fun_num)
         
         if in_data is None:
             if self.fun_data is None:

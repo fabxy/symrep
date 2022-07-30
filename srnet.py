@@ -275,6 +275,38 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 var_entropy = F.softmax(lat_acts.var(dim=0)) * entropy
                 loss += hp['e2'] * var_entropy.pow(2).sum()
 
+            if 'e3' in hp and hp['e3'] > 0:
+                try:
+                    data_real = disc_data.get()
+                except:
+                    data_real = disc_data.get(in_data=in_data)
+
+                # v1
+                # eps = 1e-6
+                # temp = 0.05
+                # err = (data_real.unsqueeze(-1) - lat_acts.unsqueeze(0))
+                # norm = F.softmax(-1/2 * temp * err.pow(2).mean(dim=1), dim=0) + eps
+                # entropy = -(norm * norm.log2()).sum(dim=0)
+
+                # v2
+                # eps = 1e-6
+                # temp = 0.05
+                # var = data_real.unsqueeze(-1).abs() + eps
+                # err = (data_real.unsqueeze(-1) - lat_acts.unsqueeze(0)) / var
+                # det = var.log().sum(dim=1)
+                # norm = F.softmax(-1/2 * temp * (det + err.pow(2).mean(dim=1)), dim=0) + eps
+                # entropy = -(norm * norm.log2()).sum(dim=0)
+
+                # v3
+                temp = 0.05
+                lat_size = lat_acts.shape[1]
+                lib_size = data_real.shape[0]
+                corr = torch.corrcoef(torch.vstack((lat_acts.T, data_real)))[:lat_size, -lib_size:]
+                norm = F.softmax(temp * corr.abs(), dim=1)
+                entropy = -(norm * norm.log2()).sum(dim=1)
+             
+                loss += hp['e3'] * entropy.pow(2).sum()
+
             if 'sd' in hp and hp['sd'] > 0:
                 # get real and fake data
                 try:
@@ -404,10 +436,11 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = "funs/F00_v2.lib"
+    fun_path = "funs/F00_v3.lib"
+    shuffle = False
     
     if fun_path:
-        disc_data = SDData(fun_path, in_var, train_data.in_data)
+        disc_data = SDData(fun_path, in_var, train_data.in_data, shuffle)
     else:
         disc_data = None
     
@@ -436,14 +469,15 @@ if __name__ == '__main__':
         "batch_size": train_data.in_data.shape[0],
         "shuffle": False,
         "lr": 1e-4,
-        "wd": 1e-4,
+        "wd": 1e-6,
         "l1": 0.0,
         "a1": 0.0,
         "a2": 0.0,
         "e1": 0.0,
         "e2": 0.0,
+        "e3": 1e-1,
         "gc": 0.0,
-        "sd": 1e-5,
+        "sd": 0.0,
         "disc": {
             "hid_num": 6,
             "hid_size": 128,
