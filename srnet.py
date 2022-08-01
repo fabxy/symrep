@@ -421,6 +421,8 @@ if __name__ == '__main__':
 
     # set wandb project
     wandb_project = None # "first-try"
+    sweep_id = None
+    sweep_num = None
 
     # load data
     data_path = "data_1k"
