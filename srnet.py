@@ -436,11 +436,11 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = "funs/F00_v3.lib"
-    shuffle = False
+    fun_path = "funs/F00_v5.lib"
+    shuffle = True
     
     if fun_path:
-        disc_data = SDData(fun_path, in_var, train_data.in_data, shuffle)
+        disc_data = SDData(fun_path, in_var, shuffle=shuffle)
     else:
         disc_data = None
     
@@ -475,9 +475,9 @@ if __name__ == '__main__':
         "a2": 0.0,
         "e1": 0.0,
         "e2": 0.0,
-        "e3": 1e-1,
+        "e3": 0.0,
         "gc": 0.0,
-        "sd": 0.0,
+        "sd": 1e-6,
         "disc": {
             "hid_num": 6,
             "hid_size": 128,

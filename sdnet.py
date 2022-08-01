@@ -148,7 +148,19 @@ class SDData(Dataset):
 
     def evaluate(self, funs, in_data):
         data_dict = {self.in_var: in_data}
-        return torch.vstack([eval(fun, {'np': np}, data_dict) for fun in funs])
+        
+        eval_data = []
+        for fun in funs:
+
+            while 'N' in fun:
+                fun = fun.replace('N', str(torch.randn(1).item()), 1)
+                
+            while 'U' in fun:
+                fun = fun.replace('U', str(torch.rand(1).item()), 1)
+
+            eval_data.append(eval(fun, {'np': np}, data_dict))
+
+        return torch.vstack(eval_data)
     
     def get(self, fun_num=None, in_data=None):                 # TODO: get or __get__?
 
