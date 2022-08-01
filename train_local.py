@@ -9,9 +9,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "112-bn-mask-DSN-sd-study-F00_v3"
-sweep_id = "jyays38r"
-sweep_num = 10
+wandb_project = "132-bn-mask-DSN-sd-study-F00_v5"
+sweep_id = None
+sweep_num = None
 
 # load data
 data_path = "data_1k"
@@ -27,16 +27,17 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # create discriminator data
-fun_path = "funs/F00_v3.lib"
+fun_path = "funs/F00_v5.lib"
+shuffle = True
 
 if fun_path:
-    disc_data = SDData(fun_path, in_var, train_data.in_data)
+    disc_data = SDData(fun_path, in_var, shuffle=shuffle)
 else:
     disc_data = None
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_v3_bn_mask_sd_study.pkl"
+save_file = "models/srnet_model_F00_v5_bn_mask_sd_study.pkl"
 log_freq = 25
 
 # define hyperparameters
@@ -59,22 +60,23 @@ hyperparams = {
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
     "lr": 1e-4,
-    "wd": 1e-4,
+    "wd": 1e-6,
     "l1": 0.0,
     "a1": 0.0,
     "a2": 0.0,
     "e1": 0.0,
     "e2": 0.0,
+    "e3": 0.0,
     "gc": 0.0,
-    "sd": 1e-4,
+    "sd": 1e-6,
     "disc": {
-        "hid_num": 2,
+        "hid_num": 6,
         "hid_size": 128,
         "emb_size": None,
-        "lr": 1e-4,
+        "lr": 1e-3,
         "wd": 1e-4,
         "iters": 5,
-        "gp": 1e-4,
+        "gp": 1e-5,
     },
 }
 
