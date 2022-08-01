@@ -9,16 +9,16 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "132-bn-mask-DSN-sd-study-F00_v5"
+wandb_project = "132-bn-mask-DSN-sd-study-F07_v1"
 sweep_id = None
 sweep_num = None
 
 # load data
 data_path = "data_1k"
 
-in_var = "X00"
-lat_var = "G00"
-target_var = "F00"
+in_var = "X07"
+lat_var = "G07"
+target_var = "F07"
 
 mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
@@ -27,7 +27,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # create discriminator data
-fun_path = "funs/F00_v5.lib"
+fun_path = "funs/F07_v1.lib"
 shuffle = True
 
 if fun_path:
@@ -37,7 +37,7 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F00_v5_bn_mask_sd_study.pkl"
+save_file = "models/srnet_model_F07_v1_bn_mask_sd_study.pkl"
 log_freq = 25
 
 # define hyperparameters
