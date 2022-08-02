@@ -9,16 +9,16 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "133-bn-DSN-sd-study-F08_v1"
-sweep_id = "qthpo2vn"
-sweep_num = 15
+wandb_project = "132-bn-mask-DSN-sd-study-F07_v1"
+sweep_id = None # "hem68877"
+sweep_num = None
 
 # load data
 data_path = "data_1k"
 
-in_var = "X08"
-lat_var = "G08"
-target_var = "F08"
+in_var = "X07"
+lat_var = "G07"
+target_var = "F07"
 
 mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
@@ -27,7 +27,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # create discriminator data
-fun_path = "funs/F08_v1.lib"
+fun_path = "funs/F07_v1.lib"
 shuffle = True
 
 if fun_path:
@@ -36,48 +36,48 @@ else:
     disc_data = None
 
 # set load and save file
-load_file = None
-save_file = "models/srnet_model_F08_v1_bn_sd_study.pkl"
+load_file = "srnet_model_F07_v1_bn_mask_sd_study_v32.pkl"
+save_file = "models/srnet_model_F07_v1_bn_mask_sd_study_v32_max.pkl"
 log_freq = 25
 
 # define hyperparameters
 hyperparams = {
-    "arch": {
-        "in_size": train_data.in_data.shape[1],
-        "out_size": train_data.target_data.shape[1],
-        "hid_num": (2,0),
-        "hid_size": 32, 
-        "hid_type": "MLP",
-        "hid_kwargs": {
-            "alpha": None,
-            "norm": None,
-            "prune": None,
-            },
-        "lat_size": 1,
-        },
-    "epochs": 50000,
-    "runtime": None,
-    "batch_size": train_data.in_data.shape[0],
-    "shuffle": False,
-    "lr": 1e-4,
-    "wd": 1e-6,
-    "l1": 0.0,
-    "a1": 0.0,
-    "a2": 0.0,
-    "e1": 0.0,
-    "e2": 0.0,
-    "e3": 0.0,
-    "gc": 0.0,
-    "sd": 1e-8,
-    "disc": {
-        "hid_num": 2,
-        "hid_size": 32,
-        "emb_size": None,
-        "lr": 1e-3,
-        "wd": 1e-7,
-        "iters": 5,
-        "gp": 1e-5,
-    },
+    # "arch": {
+    #     "in_size": train_data.in_data.shape[1],
+    #     "out_size": train_data.target_data.shape[1],
+    #     "hid_num": (2,0),
+    #     "hid_size": 32, 
+    #     "hid_type": ("DSN", "MLP"),
+    #     "hid_kwargs": {
+    #         "alpha": [[1,0],[0,1],[1,1]],
+    #         "norm": None,
+    #         "prune": None,
+    #         },
+    #     "lat_size": 3,
+    #     },
+    "epochs": 150000,
+    # "runtime": None,
+    # "batch_size": train_data.in_data.shape[0],
+    # "shuffle": False,
+    # "lr": 1e-4,
+    # "wd": 1e-6,
+    # "l1": 0.0,
+    # "a1": 0.0,
+    # "a2": 0.0,
+    # "e1": 0.0,
+    # "e2": 0.0,
+    # "e3": 0.0,
+    # "gc": 0.0,
+    # "sd": 1e-6,
+    # "disc": {
+    #     "hid_num": 6,
+    #     "hid_size": 128,
+    #     "emb_size": None,
+    #     "lr": 1e-3,
+    #     "wd": 1e-4,
+    #     "iters": 5,
+    #     "gp": 1e-5,
+    # },
 }
 
 def train():
