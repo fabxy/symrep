@@ -201,3 +201,28 @@ def extend(org_data, *args):
             raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
     
     return org_data
+
+
+def triangle(x, a=1.0, c=0.5):
+    
+    mask = ((x // c) % 2).astype(np.bool)
+    
+    y = np.zeros_like(x)
+    
+    y[mask] = 2*c - x[mask]
+    y[~mask] = x[~mask]
+    
+    y -= (y//(2*c))*2*c
+    y *= a
+    
+    return y
+
+
+def triangle_cos(x, a=1.0, c=0.5):
+    
+    y = np.cos(np.pi/c*x)
+    
+    y *= -a*c/2
+    y += a*c/2
+    
+    return y
