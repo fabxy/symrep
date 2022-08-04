@@ -9,7 +9,7 @@ from collections.abc import Iterable
 
 class SDNet(nn.Module):
 
-    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, iters=5, gp=1e-3):
+    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=1e-3):
         super().__init__()
 
         self.in_size = in_size
@@ -62,7 +62,7 @@ class SDNet(nn.Module):
 
         self.layers2 = nn.Sequential(*layers2)
         
-        self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=wd)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr, weight_decay=wd, betas=betas)
         self.iters = iters
         self.gp = gp
 
@@ -105,11 +105,16 @@ class SDNet(nn.Module):
         return (gradient.norm(2, dim=grad_dim) - 1).pow(2).mean()
 
 
-    def fit(self, data_real, data_fake):
+    def fit(self, dataset_real, data_fake):
       
         losses = []
-        for _ in range(self.iters):
+        for i in range(self.iters):
 
+            if dataset_real.shape[0] == 1:
+                data_real = dataset_real[0]
+            else:
+                data_real = dataset_real[i]
+                    
             self.optimizer.zero_grad()
 
             loss_real = -self.loss(data_real)
@@ -130,12 +135,13 @@ class SDNet(nn.Module):
 
 class SDData(Dataset):
 
-    def __init__(self, fun_path, in_var, in_data=None, shuffle=True):
+    def __init__(self, fun_path, in_var, in_data=None, shuffle=True, iter_sample=False):
         super().__init__()
 
         self.in_var = in_var
         self.path = fun_path
         self.shuffle = shuffle
+        self.iter_sample = iter_sample
 
         with open(fun_path, 'r') as f:
             self.funs = [fun.strip() for fun in f]
@@ -162,21 +168,26 @@ class SDData(Dataset):
 
         return torch.vstack(eval_data)
     
-    def get(self, fun_num=None, in_data=None):                 # TODO: get or __get__?
+    def get(self, fun_num=None, in_data=None, iter_num=1):                 # TODO: get or __get__?
 
         if fun_num is None:
             fun_num = self.len
+
+        iter_data = []
+        for _ in range(iter_num):
         
-        if self.shuffle:
-            idxs = torch.randperm(self.len)[:fun_num]
-        else:
-            idxs = torch.arange(fun_num)
-        
-        if in_data is None:
-            if self.fun_data is None:
-                raise RuntimeError("No input data provided.")
+            if self.shuffle:
+                idxs = torch.randperm(self.len)[:fun_num]
             else:
-                return self.fun_data[idxs]
-        else:
-            funs = [self.funs[idx] for idx in idxs]
-            return self.evaluate(funs, in_data)
+                idxs = torch.arange(fun_num)
+        
+            if in_data is None:
+                if self.fun_data is None:
+                    raise RuntimeError("No input data provided.")
+                else:
+                    iter_data.append(self.fun_data[idxs])
+            else:
+                funs = [self.funs[idx] for idx in idxs]
+                iter_data.append(self.evaluate(funs, in_data))
+
+        return torch.stack(iter_data)

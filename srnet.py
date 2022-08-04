@@ -277,9 +277,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
             if 'e3' in hp and hp['e3'] > 0:
                 try:
-                    data_real = disc_data.get()
+                    data_real = disc_data.get().squeeze(0)
                 except:
-                    data_real = disc_data.get(in_data=in_data)
+                    data_real = disc_data.get(in_data=in_data).squeeze(0)
 
                 # v1
                 # eps = 1e-6
@@ -310,9 +310,12 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             if 'sd' in hp and hp['sd'] > 0:
                 # get real and fake data
                 try:
-                    data_real = disc_data.get(lat_acts.shape[1])
+                    dataset_real = disc_data.get(lat_acts.shape[1])
                 except:
-                    data_real = disc_data.get(lat_acts.shape[1], in_data)
+                    if disc_data.iter_sample:
+                        dataset_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
+                    else:
+                        dataset_real = disc_data.get(lat_acts.shape[1], in_data)
                 
                 data_fake = lat_acts.detach().T
                 
@@ -323,11 +326,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                         ext_data.append(in_data)
                 except: pass
 
-                data_real = ut.extend(data_real, *ext_data)
+                dataset_real = ut.extend(dataset_real, *ext_data)
                 data_fake = ut.extend(data_fake, *ext_data)
                 
                 # train discriminator
-                critic.fit(data_real, data_fake)
+                critic.fit(dataset_real, data_fake)
                 
                 # regularize with critic loss
                 data_acts = ut.extend(lat_acts.T, *ext_data)
@@ -397,6 +400,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             "disc_state": critic.state_dict(),
             "disc_opt_state": critic.optimizer.state_dict(),
             "fun_path": disc_data.path,
+            "disc_shuffle": disc_data.shuffle,
+            "disc_iter_sample": disc_data.iter_sample,
         }
         state.update(state_update)
 
@@ -427,9 +432,9 @@ if __name__ == '__main__':
     # load data
     data_path = "data_1k"
     
-    in_var = "X00"
-    lat_var = "G00"
-    target_var = "F00"
+    in_var = "X07"
+    lat_var = "G07"
+    target_var = "F07"
 
     mask_ext = ".mask"
     masks = joblib.load(os.path.join(data_path, in_var + mask_ext))                                 # TODO: create mask if file does not exist
@@ -438,11 +443,12 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = "funs/F00_v5.lib"
+    fun_path = "funs/F07_v1.lib"
     shuffle = True
+    iter_sample = False
     
     if fun_path:
-        disc_data = SDData(fun_path, in_var, shuffle=shuffle)
+        disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
     else:
         disc_data = None
     
@@ -486,6 +492,7 @@ if __name__ == '__main__':
             "emb_size": None,
             "lr": 1e-3,
             "wd": 1e-4,
+            "betas": (0.9,0.999),
             "iters": 5,
             "gp": 1e-5,
         },

@@ -195,8 +195,8 @@ def extend(org_data, *args):
 
     for ext_data in args:
         if len(ext_data.shape) == 2:
-            ext_data = ext_data.unsqueeze(0).repeat(3,1,1)
-            org_data = torch.cat((org_data, ext_data), dim=2)
+            ext_data = ext_data.repeat(list(org_data.shape[:-2]) + [1,1])
+            org_data = torch.cat((org_data, ext_data), dim=-1)
         else:
             raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
     

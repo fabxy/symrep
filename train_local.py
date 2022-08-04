@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "132-bn-mask-DSN-sd-study-F07_v1"
-sweep_id = None # "hem68877"
+sweep_id = None
 sweep_num = None
 
 # load data
@@ -29,55 +29,57 @@ val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=d
 # create discriminator data
 fun_path = "funs/F07_v1.lib"
 shuffle = True
-
+iter_sample = False
+    
 if fun_path:
-    disc_data = SDData(fun_path, in_var, shuffle=shuffle)
+    disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 else:
     disc_data = None
 
 # set load and save file
-load_file = "srnet_model_F07_v1_bn_mask_sd_study_v32.pkl"
-save_file = "models/srnet_model_F07_v1_bn_mask_sd_study_v32_max.pkl"
+load_file = None
+save_file = "models/srnet_model_F07_v1_bn_mask_sd_study_opt.pkl"
 log_freq = 25
 
 # define hyperparameters
 hyperparams = {
-    # "arch": {
-    #     "in_size": train_data.in_data.shape[1],
-    #     "out_size": train_data.target_data.shape[1],
-    #     "hid_num": (2,0),
-    #     "hid_size": 32, 
-    #     "hid_type": ("DSN", "MLP"),
-    #     "hid_kwargs": {
-    #         "alpha": [[1,0],[0,1],[1,1]],
-    #         "norm": None,
-    #         "prune": None,
-    #         },
-    #     "lat_size": 3,
-    #     },
+    "arch": {
+        "in_size": train_data.in_data.shape[1],
+        "out_size": train_data.target_data.shape[1],
+        "hid_num": (2,0),
+        "hid_size": 32, 
+        "hid_type": ("DSN", "MLP"),
+        "hid_kwargs": {
+            "alpha": [[1,0],[0,1],[1,1]],
+            "norm": None,
+            "prune": None,
+            },
+        "lat_size": 3,
+        },
     "epochs": 150000,
-    # "runtime": None,
-    # "batch_size": train_data.in_data.shape[0],
-    # "shuffle": False,
-    # "lr": 1e-4,
-    # "wd": 1e-6,
-    # "l1": 0.0,
-    # "a1": 0.0,
-    # "a2": 0.0,
-    # "e1": 0.0,
-    # "e2": 0.0,
-    # "e3": 0.0,
-    # "gc": 0.0,
-    # "sd": 1e-6,
-    # "disc": {
-    #     "hid_num": 6,
-    #     "hid_size": 128,
-    #     "emb_size": None,
-    #     "lr": 1e-3,
-    #     "wd": 1e-4,
-    #     "iters": 5,
-    #     "gp": 1e-5,
-    # },
+    "runtime": None,
+    "batch_size": train_data.in_data.shape[0],
+    "shuffle": False,
+    "lr": 1e-5,
+    "wd": 1e-6,
+    "l1": 0.0,
+    "a1": 0.0,
+    "a2": 0.0,
+    "e1": 0.0,
+    "e2": 0.0,
+    "e3": 0.0,
+    "gc": 0.0,
+    "sd": 1e-7,
+    "disc": {
+        "hid_num": 4,
+        "hid_size": 256,
+        "emb_size": None,
+        "lr": 1e-3,
+        "wd": 1e-7,
+        "betas": (0.9,0.999),
+        "iters": 5,
+        "gp": 1e-3,
+    },
 }
 
 def train():
