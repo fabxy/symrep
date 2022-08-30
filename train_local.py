@@ -9,16 +9,16 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "132-bn-mask-DSN-sd-study-F07_v1"
-sweep_id = None
-sweep_num = None
+wandb_project = "142-bn-mask-DSN-sd-study-F09_v1"
+sweep_id = "lhteyjzw"
+sweep_num = 15
 
 # load data
 data_path = "data_1k"
 
-in_var = "X07"
-lat_var = "G07"
-target_var = "F07"
+in_var = "X09"
+lat_var = "G09"
+target_var = "F09"
 
 mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
@@ -27,7 +27,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], devi
 val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
 # create discriminator data
-fun_path = "funs/F07_v1.lib"
+fun_path = "funs/F09_v1.lib"
 shuffle = True
 iter_sample = False
     
@@ -38,7 +38,7 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F07_v1_bn_mask_sd_study_opt.pkl"
+save_file = "models/srnet_model_F09_v1_bn_mask_sd_study_opt.pkl"
 log_freq = 25
 
 # define hyperparameters
@@ -50,17 +50,17 @@ hyperparams = {
         "hid_size": 32, 
         "hid_type": ("DSN", "MLP"),
         "hid_kwargs": {
-            "alpha": [[1,0],[0,1],[1,1]],
+            "alpha": [[1,0],[0,1],[1,0],[1,1],[1,1]],
             "norm": None,
             "prune": None,
             },
-        "lat_size": 3,
+        "lat_size": 5,
         },
-    "epochs": 150000,
+    "epochs": 30000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
-    "lr": 1e-5,
+    "lr": 1e-4,
     "wd": 1e-6,
     "l1": 0.0,
     "a1": 0.0,
@@ -69,16 +69,16 @@ hyperparams = {
     "e2": 0.0,
     "e3": 0.0,
     "gc": 0.0,
-    "sd": 1e-7,
+    "sd": 1e-6,
     "disc": {
-        "hid_num": 4,
-        "hid_size": 256,
+        "hid_num": 6,
+        "hid_size": 128,
         "emb_size": None,
         "lr": 1e-3,
         "wd": 1e-7,
         "betas": (0.9,0.999),
         "iters": 5,
-        "gp": 1e-3,
+        "gp": 1e-5,
     },
 }
 
