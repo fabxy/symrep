@@ -107,7 +107,7 @@ class SDNet(nn.Module):
 
     def fit(self, dataset_real, data_fake):
       
-        losses = []
+        accs = []
         for i in range(self.iters):
 
             if dataset_real.shape[0] == 1:
@@ -117,8 +117,11 @@ class SDNet(nn.Module):
                     
             self.optimizer.zero_grad()
 
-            loss_real = -self.loss(data_real)
-            loss_fake = self.loss(data_fake)
+            pred_real = self.forward(data_real)
+            pred_fake = self.forward(data_fake)
+            
+            loss_real = -pred_real.mean()
+            loss_fake = pred_fake.mean()
             loss = loss_real + loss_fake
             
             if self.gp:
@@ -128,9 +131,12 @@ class SDNet(nn.Module):
 
             self.optimizer.step()
 
-            losses.append(loss.item())
+            with torch.no_grad():
+                pred_corr = (pred_real > 0).sum() + (pred_fake <= 0).sum()
+                pred_all = pred_real.shape[0] + pred_fake.shape[0]
+                accs.append((pred_corr / pred_all).item())
 
-        return losses
+        return accs
 
 
 class SDData(Dataset):
@@ -177,7 +183,9 @@ class SDData(Dataset):
         for _ in range(iter_num):
         
             if self.shuffle:
-                idxs = torch.randperm(self.len)[:fun_num]
+                # NOTE: when resampling coeffs, we can draw with replacement
+                # idxs = torch.randperm(self.len)[:fun_num]
+                idxs = torch.randint(self.len, (fun_num,))
             else:
                 idxs = torch.arange(fun_num)
         
