@@ -1,11 +1,32 @@
+import os
 import numpy as np
+import joblib
+import time
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 import torch.optim as optim
 from torch.autograd import Variable, grad
+import wandb
 
 from collections.abc import Iterable
+import srnet_utils as ut
+
+import os
+import numpy as np
+import joblib
+import time
+
+try:
+    if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
+        from tqdm.notebook import trange
+    else:
+        raise RuntimeWarning()
+except:
+    from tqdm import trange
+
 
 class SDNet(nn.Module):
 
@@ -199,3 +220,121 @@ class SDData(Dataset):
                 iter_data.append(self.evaluate(funs, in_data))
 
         return torch.stack(iter_data)
+
+
+def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_file=None, save_file=None, log_freq=1, acc_hor=100, device=torch.device("cpu"), wandb_project=None):
+
+    # load state for restart
+    if load_file:
+        state = joblib.load(load_file)
+        hyperparams = dict(state['hyperparams'], **hyperparams)
+
+    # initialize wandb
+    if wandb_project:
+        wandb.init(project=wandb_project, config=hyperparams)
+        hp = wandb.config
+        if save_file:
+            wandb.run.name = os.path.basename(save_file.format(**hp, **hp['arch'])).split('.')[0]
+    else:
+        hp = hyperparams
+
+    # set seed
+    torch.manual_seed(0)
+
+    # create discriminator
+    critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
+    critic.train()
+
+    # monitor statistics
+    tot_accs = []
+    stime = time.time()
+    times = []
+    epoch = 0
+    
+    # restart training                                                                              # TODO: check out how to continue a run in wandb
+    if load_file:        
+        critic.load_state_dict(state['disc_state'])
+        critic.optimizer.load_state_dict(state['disc_opt_state'])
+
+        tot_accs = state['tot_accs']
+        times = state['times']
+        stime = time.time() - times[-1]
+        epoch = len(times)
+
+        torch.set_rng_state(state['seed_state'])
+    
+    # define training loop
+    t = trange(epoch, hp['epochs'], desc="Epoch")
+    for epoch in t:
+
+        # get fake data
+        model = model_cls(**hp['arch']).to(device)
+        model.train()
+
+        with torch.no_grad():
+            _, lat_acts = model(train_data.in_data, get_lat=True)
+
+        data_fake = lat_acts.detach().T
+
+        # get real data
+        if disc_data.iter_sample:
+            dataset_real = disc_data.get(lat_acts.shape[1], train_data.in_data, critic.iters)
+        else:
+            dataset_real = disc_data.get(lat_acts.shape[1], train_data.in_data)
+
+        # # extend real and fake data
+        # ext_data = []
+        # try:
+        #     if hp['disc']['emb_size'] > 1:
+        #         ext_data.append(in_data)
+        # except: pass
+
+        # dataset_real = ut.extend(dataset_real, *ext_data)
+        # data_fake = ut.extend(data_fake, *ext_data)
+
+        # train critic
+        accs = critic.fit(dataset_real, data_fake)
+
+        # monitor stats
+        tot_accs.append(np.mean(accs))
+        times.append(time.time() - stime)
+
+        if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
+                    
+            t_update = {"acc": tot_accs[-1], "avg_acc": np.mean(tot_accs[-acc_hor:])}
+            t.set_postfix({k: f"{v:.2f}" for k, v in t_update.items()})
+            if wandb_project:
+                t_update["epoch"] = epoch
+                t_update["time"] = times[-1]
+                wandb.log(t_update)
+        
+        if hp["runtime"]:
+            if times[-1] > hp["runtime"]:
+                break
+
+    state = {
+        "seed_state": torch.get_rng_state(),
+        "hyperparams": hp._items if wandb_project else hp,
+        "tot_accs": tot_accs,
+        "times": times,
+        "data_path": train_data.path,
+        "in_var": train_data.in_var,
+        "disc_state": critic.state_dict(),
+        "disc_opt_state": critic.optimizer.state_dict(),
+        "fun_path": disc_data.path,
+        "disc_shuffle": disc_data.shuffle,
+        "disc_iter_sample": disc_data.iter_sample,
+        }
+
+    if save_file:
+        save_file = save_file.format(**hp, **hp['arch'])
+        os.makedirs(os.path.dirname(os.path.abspath(save_file)), exist_ok=True)
+        joblib.dump(state, save_file)                                                               # TODO: consider device when saving?
+        
+        if wandb_project:
+            wandb.save(save_file)
+
+    if wandb_project:
+        wandb.finish()
+
+    return critic
