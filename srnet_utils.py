@@ -46,6 +46,39 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
     return model_names
 
 
+def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None):
+
+    _, ax = plt.subplots()
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                # calculate average accuracies
+                if acc_hor is not None:
+                    accs = [np.mean(state['tot_accs'][max(0,i+1-acc_hor):i+1]) for i in range(len(state['tot_accs']))]
+                else:
+                    accs = state['tot_accs']
+
+                # plot average accuracies
+                ax.plot(accs, label=label)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Accuracy")
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
 def load_model(save_file, save_path=".", model_cls=None, model_type=None):
 
     # get hyperparameters
@@ -186,21 +219,38 @@ def plot_acts(x_data, y_data, z_data, acts=None, nodes=[], model=None, bias=Fals
     plt.show()
 
 
-def extend(org_data, *args):
+def extend(data, *args, ext_type=None):
 
-    if len(args) == 0:
-        return org_data
-    
-    org_data = org_data.unsqueeze(-1)
+    if ext_type is None or len(args) == 0:
+        return data
 
-    for ext_data in args:
-        if len(ext_data.shape) == 2:
-            ext_data = ext_data.repeat(list(org_data.shape[:-2]) + [1,1])
-            org_data = torch.cat((org_data, ext_data), dim=-1)
-        else:
-            raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
+    if ext_type == "stack":
+        for ext_data in args:
+            ext_data = ext_data.flatten(-2)
+            
+            if len(ext_data.shape) == 1:
+                ext_data = ext_data.repeat(list(data.shape[:-1]) + [1])
+            elif len(ext_data.shape) == len(data.shape):
+                pass
+            else:
+                raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
+            
+            data = torch.cat((data, ext_data), dim=-1)
+        
+    elif ext_type == "embed":
+        data = data.unsqueeze(-1)
+        for ext_data in args:
+            
+            if len(ext_data.shape) == 2:
+                ext_data = ext_data.repeat(list(data.shape[:-2]) + [1,1])
+            elif len(ext_data.shape) == len(data.shape):
+                pass
+            else:
+                raise RuntimeError(f"Extension with {len(ext_data.shape)}D tensor is not supported yet.")
+            
+            data = torch.cat((data, ext_data), dim=-1)
     
-    return org_data
+    return data
 
 
 def triangle(x, a=1.0, c=0.5):

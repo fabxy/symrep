@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
+from torch.autograd import Variable, grad
 import wandb
 
 from collections.abc import Iterable
@@ -108,6 +109,41 @@ class SRNet(nn.Module):
         else:
             return x
 
+    def jacobian(self, in_data, get_lat=True):
+
+        # option 1: slow
+        # jac = torch.autograd.functional.jacobian(model.layers1, in_data)
+        # jac = torch.diagonal(jac, dim1=0, dim2=2).permute(2,0,1)
+    
+        # option 2: not working
+        # jac = functorch.vmap(functorch.jacrev(model.layers1))(in_data)
+
+        # option 3:
+        in_data = Variable(in_data, requires_grad=True)
+        preds, lat_acts = self(in_data, get_lat=True)
+
+        if get_lat:
+            out_data = lat_acts
+        else:
+            out_data = preds
+
+        grads = []
+        for i in range(out_data.shape[1]):
+            grad_outputs = torch.zeros_like(out_data)
+            grad_outputs[:,i] = 1
+
+            grad_data = grad(
+                inputs=in_data,
+                outputs=out_data,
+                grad_outputs=grad_outputs,
+                create_graph=True,
+                retain_graph=True,
+            )[0]
+
+            grads.append(grad_data)
+
+        return torch.stack(grads).transpose(0,1)
+
 
 class SRData(Dataset):
 
@@ -202,7 +238,16 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
     # create discriminator
     if 'sd' in hp and hp['sd'] > 0:
-        critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
+
+        disc_in_size = hp['batch_size']
+        try:
+            if hp['ext_type'] == "stack":
+                disc_in_size *= hp['ext_size'] + 1
+            elif hp['ext_type'] == "embed":
+                hp['disc']['emb_size'] = hp['ext_size'] + 1
+        except: pass
+
+        critic = disc_cls(disc_in_size, **hp['disc']).to(device)
         critic.train()
 
     # monitor statistics
@@ -310,30 +355,41 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             if 'sd' in hp and hp['sd'] > 0:
                 # get real and fake data
                 try:
-                    dataset_real = disc_data.get(lat_acts.shape[1])
+                    datasets_real = disc_data.get(lat_acts.shape[1])
                 except:
                     if disc_data.iter_sample:
-                        dataset_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
+                        datasets_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
                     else:
-                        dataset_real = disc_data.get(lat_acts.shape[1], in_data)
+                        datasets_real = disc_data.get(lat_acts.shape[1], in_data)
                 
+                dataset_real = datasets_real[...,0]
                 data_fake = lat_acts.detach().T
                 
                 # extend real and fake data
-                ext_data = []
-                try:
-                    if hp['disc']['emb_size'] > 1:
-                        ext_data.append(in_data)
-                except: pass
-
-                dataset_real = ut.extend(dataset_real, *ext_data)
-                data_fake = ut.extend(data_fake, *ext_data)
-                
+                ext_data_real = []
+                ext_data_fake = []
+                if 'ext' in hp and hp['ext'] is not None:
+                    for ext_name in hp['ext']:
+                        if ext_name == "input":
+                            ext_data_real.append(in_data)
+                            ext_data_fake.append(in_data)
+                        elif ext_name == "grad":
+                            grad_data_real = datasets_real[...,1:]                                                  # iters x lat x batch x grad
+                            grad_data_fake = reg_model.jacobian(in_data, get_lat=True).transpose(0,1)               # lat x batch x grad
+                            ext_data_real.append(grad_data_real)
+                            ext_data_fake.append(grad_data_fake.detach())
+                        else:
+                            raise KeyError(f"Extension {ext_name} is not defined.")
+                    
+                    dataset_real = ut.extend(dataset_real, *ext_data_real, ext_type=hp['ext_type'])
+                    data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
+              
                 # train discriminator
                 critic.fit(dataset_real, data_fake)
                 
                 # regularize with critic loss
-                data_acts = ut.extend(lat_acts.T, *ext_data)
+                # TODO: what is the extension data here? do we use grad_data_fake detached or not detached?
+                data_acts = ut.extend(lat_acts.T, *ext_data_fake, ext_type=hp['ext_type'])
                 loss += -1 * hp['sd'] * critic.loss(data_acts)
 
             loss.backward()
@@ -443,7 +499,7 @@ if __name__ == '__main__':
     val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
 
     # create discriminator data
-    fun_path = "funs/F07_v1.lib"
+    fun_path = "funs/F07_v2.lib"
     shuffle = True
     iter_sample = False
     
@@ -472,7 +528,7 @@ if __name__ == '__main__':
                 },
             "lat_size": 3,
             },
-        "epochs": 30000,
+        "epochs": 1000,
         "runtime": None,
         "batch_size": train_data.in_data.shape[0],
         "shuffle": False,
@@ -486,10 +542,12 @@ if __name__ == '__main__':
         "e3": 0.0,
         "gc": 0.0,
         "sd": 1e-6,
+        "ext": ["input", "grad"],
+        "ext_type": "stack",
+        "ext_size": 4,
         "disc": {
             "hid_num": 6,
             "hid_size": 128,
-            "emb_size": None,
             "lr": 1e-3,
             "wd": 1e-4,
             "betas": (0.9,0.999),

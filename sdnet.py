@@ -171,7 +171,7 @@ class SDData(Dataset):
         self.iter_sample = iter_sample
 
         with open(fun_path, 'r') as f:
-            self.funs = [fun.strip() for fun in f]
+            self.funs = [fun.strip().split(';') for fun in f]
             self.len = len(self.funs)
 
         if in_data is not None:
@@ -184,16 +184,18 @@ class SDData(Dataset):
         
         eval_data = []
         for fun in funs:
+            coeff_dict = {}
+            c = 0
+            while f"N{c}" in fun[0] or f"U{c}" in fun[0]:
+                coeff_dict[f"N{c}"] = torch.randn(1).item()
+                coeff_dict[f"U{c}"] = torch.rand(1).item()
+                c += 1
+            
+            fun_data = [eval(f, {'np': np}, {**data_dict, **coeff_dict}) for f in fun]
+            fun_data = [f_data if torch.is_tensor(f_data) else f_data * torch.ones(data_dict[self.in_var].shape[0]) for f_data in fun_data]
+            eval_data.append(torch.stack(fun_data).T)
 
-            while 'N' in fun:
-                fun = fun.replace('N', str(torch.randn(1).item()), 1)
-                
-            while 'U' in fun:
-                fun = fun.replace('U', str(torch.rand(1).item()), 1)
-
-            eval_data.append(eval(fun, {'np': np}, data_dict))
-
-        return torch.vstack(eval_data)
+        return torch.stack(eval_data)
     
     def get(self, fun_num=None, in_data=None, iter_num=1):                 # TODO: get or __get__?
 
@@ -242,7 +244,15 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
     torch.manual_seed(0)
 
     # create discriminator
-    critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
+    disc_in_size = hp['batch_size']
+    try:
+        if hp['ext_type'] == "stack":
+            disc_in_size *= hp['ext_size'] + 1
+        elif hp['ext_type'] == "embed":
+            hp['disc']['emb_size'] = hp['ext_size'] + 1
+    except: pass
+
+    critic = disc_cls(disc_in_size, **hp['disc']).to(device)
     critic.train()
 
     # monitor statistics
@@ -251,7 +261,7 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
     times = []
     epoch = 0
     
-    # restart training                                                                              # TODO: check out how to continue a run in wandb
+    # restart training
     if load_file:        
         critic.load_state_dict(state['disc_state'])
         critic.optimizer.load_state_dict(state['disc_opt_state'])
@@ -278,19 +288,30 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
 
         # get real data
         if disc_data.iter_sample:
-            dataset_real = disc_data.get(lat_acts.shape[1], train_data.in_data, critic.iters)
+            datasets_real = disc_data.get(lat_acts.shape[1], train_data.in_data, critic.iters)
         else:
-            dataset_real = disc_data.get(lat_acts.shape[1], train_data.in_data)
+            datasets_real = disc_data.get(lat_acts.shape[1], train_data.in_data)
 
-        # # extend real and fake data
-        # ext_data = []
-        # try:
-        #     if hp['disc']['emb_size'] > 1:
-        #         ext_data.append(in_data)
-        # except: pass
+        dataset_real = datasets_real[...,0]
 
-        # dataset_real = ut.extend(dataset_real, *ext_data)
-        # data_fake = ut.extend(data_fake, *ext_data)
+        # extend real and fake data
+        ext_data_real = []
+        ext_data_fake = []
+        if 'ext' in hp and hp['ext'] is not None:
+            for ext_name in hp['ext']:
+                if ext_name == "input":
+                    ext_data_real.append(train_data.in_data)
+                    ext_data_fake.append(train_data.in_data)
+                elif ext_name == "grad":
+                    grad_data_real = datasets_real[...,1:]
+                    grad_data_fake = model.jacobian(train_data.in_data, get_lat=True).transpose(0,1)
+                    ext_data_real.append(grad_data_real)
+                    ext_data_fake.append(grad_data_fake.detach())
+                else:
+                    raise KeyError(f"Extension {ext_name} is not defined.")
+            
+            dataset_real = ut.extend(dataset_real, *ext_data_real, ext_type=hp['ext_type'])
+            data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
 
         # train critic
         accs = critic.fit(dataset_real, data_fake)
@@ -329,7 +350,7 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
     if save_file:
         save_file = save_file.format(**hp, **hp['arch'])
         os.makedirs(os.path.dirname(os.path.abspath(save_file)), exist_ok=True)
-        joblib.dump(state, save_file)                                                               # TODO: consider device when saving?
+        joblib.dump(state, save_file)
         
         if wandb_project:
             wandb.save(save_file)

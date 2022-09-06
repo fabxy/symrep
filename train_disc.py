@@ -9,8 +9,8 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "153-sd-study-F10_v1"
-sweep_id = "kzc7aar4"
+wandb_project = "155-ext1-study-F10_v1"
+sweep_id = "uwhl9jpm"
 sweep_num = 15
 
 # load data
@@ -23,6 +23,7 @@ mask_ext = ".mask"
 masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
 
 train_data = SRData(data_path, in_var, data_mask=masks["train"], device=device)
+# NOTE: this is a hack
 train_data.in_data = train_data.in_data[:,:1]
 
 # create discriminator data
@@ -33,7 +34,7 @@ disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 
 # set load and save file
 load_file = None
-save_file = "models/disc_model_F10_v1_sd_study.pkl"
+save_file = "models/disc_model_F10_v1_ext1_study.pkl"
 log_freq = 25
 acc_hor = 500
 
@@ -50,15 +51,17 @@ hyperparams = {
             "norm": None,
             "prune": None,
             },
-        "lat_size": 5,
+        "lat_size": 3,
     },
     "epochs": 100000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
+    "ext": ["input"],
+    "ext_type": "embed",
+    "ext_size": 1,
     "disc": {
-        "hid_num": 6,
-        "hid_size": 128,
-        "emb_size": None,
+        "hid_num": 2,
+        "hid_size": 64,
         "lr": 1e-4,
         "wd": 1e-7,
         "betas": (0.9,0.999),
