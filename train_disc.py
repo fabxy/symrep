@@ -9,8 +9,8 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "155-ext1-study-F10_v1"
-sweep_id = "uwhl9jpm"
+wandb_project = "155-ext2-study-F10_v1"
+sweep_id = "ab1ebpx8"
 sweep_num = 15
 
 # load data
@@ -34,7 +34,7 @@ disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 
 # set load and save file
 load_file = None
-save_file = "models/disc_model_F10_v1_ext1_study.pkl"
+save_file = "models/disc_model_F10_v1_ext2_study.pkl"
 log_freq = 25
 acc_hor = 500
 
@@ -56,7 +56,7 @@ hyperparams = {
     "epochs": 100000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
-    "ext": ["input"],
+    "ext": ["grad"],
     "ext_type": "embed",
     "ext_size": 1,
     "disc": {
