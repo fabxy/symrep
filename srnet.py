@@ -388,7 +388,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 critic.fit(dataset_real, data_fake)
                 
                 # regularize with critic loss
-                # TODO: what is the extension data here? do we use grad_data_fake detached or not detached?
+                # TODO: what is the extension data here? do we use grad_data_fake detached or not detached? check softplus activation function
                 data_acts = ut.extend(lat_acts.T, *ext_data_fake, ext_type=hp['ext_type'])
                 loss += -1 * hp['sd'] * critic.loss(data_acts)
 

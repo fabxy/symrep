@@ -46,7 +46,7 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
     return model_names
 
 
-def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None):
+def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
@@ -69,7 +69,15 @@ def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None):
                     accs = state['tot_accs']
 
                 # plot average accuracies
-                ax.plot(accs, label=label)
+                epochs = np.arange(len(accs))
+                lines = ax.plot(accs, label=label)
+
+                # plot uncertainty
+                if acc_hor is not None and uncertainty:
+                    acc_stds = [np.std(state['tot_accs'][max(0,i+1-acc_hor):i+1]) for i in range(len(state['tot_accs']))]
+                    acc_nstds = [accs[i] - acc_stds[i] for i in range(len(accs))]
+                    acc_pstds = [accs[i] + acc_stds[i] for i in range(len(accs))]
+                    ax.fill_between(epochs, acc_nstds, acc_pstds, alpha=0.25)
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Accuracy")
@@ -104,6 +112,29 @@ def load_model(save_file, save_path=".", model_cls=None, model_type=None):
     model.load_state_dict(model_state)
 
     return model
+
+
+def load_disc(save_file, save_path=".", disc_cls=None):
+
+    # get hyperparameters
+    state = joblib.load(os.path.join(save_path, save_file))
+    hp = state['hyperparams']
+
+    # create critic
+    disc_in_size = hp['batch_size']
+    try:
+        if hp['ext_type'] == "stack":
+            disc_in_size *= hp['ext_size'] + 1
+        elif hp['ext_type'] == "embed":
+            hp['disc']['emb_size'] = hp['ext_size'] + 1
+    except: pass
+
+    critic = disc_cls(disc_in_size, **hp['disc'])
+
+    # update critic
+    critic.load_state_dict(state['disc_state'])
+
+    return critic
 
 
 def save_preds(data, var_name, save_path=".", model_name=None):
