@@ -252,9 +252,6 @@ def plot_acts(x_data, y_data, z_data, acts=None, nodes=[], model=None, bias=Fals
 
 def extend(data, *args, ext_type=None):
 
-    if ext_type is None or len(args) == 0:
-        return data
-
     if ext_type == "stack":
         for ext_data in args:
             ext_data = ext_data.flatten(-2)

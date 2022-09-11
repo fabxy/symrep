@@ -14,11 +14,6 @@ import wandb
 from collections.abc import Iterable
 import srnet_utils as ut
 
-import os
-import numpy as np
-import joblib
-import time
-
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
         from tqdm.notebook import trange
@@ -124,7 +119,6 @@ class SDNet(nn.Module):
         )[0]
         
         return (gradient.norm(2, dim=grad_dim) - 1).pow(2).mean()
-
 
     def fit(self, dataset_real, data_fake):
       
