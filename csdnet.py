@@ -1,31 +1,11 @@
-import os
-import numpy as np
-import joblib
-import time
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset
 import torch.optim as optim
 from torch.autograd import Variable, grad
-import wandb
-
-from collections.abc import Iterable
-from sdnet import SDNet
-import srnet_utils as ut
-
-try:
-    if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
-        from tqdm.notebook import trange
-    else:
-        raise RuntimeWarning()
-except:
-    from tqdm import trange
 
 class CSDNet(nn.Module):
 
-    def __init__(self, in_size, conv_arch=[16], hid_num=1, hid_size=100, emb_size=1, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=1e-3):
+    def __init__(self, in_size, conv_arch=[16], kernel_size=3, hid_num=1, hid_size=100, emb_size=1, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=1e-3):
         super().__init__()
 
         # convolutional layers
@@ -35,7 +15,7 @@ class CSDNet(nn.Module):
         for a in conv_arch:
             if type(a) == int:
                 out_channels = a
-                layers1.append(nn.Conv1d(in_channels, out_channels, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=True))
+                layers1.append(nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding='same', padding_mode='replicate', bias=True))
                 layers1.append(nn.ReLU())
                 in_channels = a
             else:

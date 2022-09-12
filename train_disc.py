@@ -10,9 +10,13 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "160-conv-check-F11_v1"
-sweep_id = None
-sweep_num = None
+wandb_project = "162-ext2-study-F11_v1"
+sweep_id = "c5hgi21o"
+sweep_num = 15
+
+# select generator and discriminator
+model_cls = SRNet
+disc_cls = SDNet
 
 # load data
 data_path = "data_1k"
@@ -33,7 +37,7 @@ disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 
 # set load and save file
 load_file = None
-save_file = "models/disc_model_F11_v1_conv_check.pkl"
+save_file = "models/disc_model_F11_v1_ext2_study.pkl"
 log_freq = 25
 acc_hor = 500
 
@@ -55,11 +59,12 @@ hyperparams = {
     "epochs": 100000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
-    "ext": [],
+    "ext": ["grad"],
     "ext_type": "embed",
-    "ext_size": 0,
+    "ext_size": 1,
     "disc": {
-        "conv_arch": [8, 8, 'M', 16, 16, 'M', 32, 'M'],
+        # "conv_arch": [8, 8, 'M', 16, 16, 'M', 32, 'M'],
+        # "kernel_size": 3,
         "hid_num": 2,
         "hid_size": 64,
         "lr": 1e-4,
@@ -71,7 +76,7 @@ hyperparams = {
 }
 
 def train():
-    run_training(CSDNet, SRNet, hyperparams, train_data, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, acc_hor=acc_hor, device=device, wandb_project=wandb_project)
+    run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, acc_hor=acc_hor, device=device, wandb_project=wandb_project)
 
 if __name__ == "__main__":
 
