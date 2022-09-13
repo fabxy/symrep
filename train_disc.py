@@ -10,8 +10,8 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "162-ext2-study-F11_v1"
-sweep_id = "c5hgi21o"
+wandb_project = "164-ext2-study2-F11_v1"
+sweep_id = "l7pq1m8d"
 sweep_num = 15
 
 # select generator and discriminator
@@ -27,6 +27,11 @@ target_var = None
 # mask_ext = ".mask"
 # masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
 
+# # train_data = SRData(data_path, in_var, data_mask=masks['train'], device=device)
+# # train_data.in_data = train_data.in_data[:,:1].sort(0)[0]
+# train_data = SRData(data_path, in_var, data_mask=None, device=device)
+# train_data.in_data = train_data.in_data[:,:1]
+
 train_data = SRData(data_path, in_var, data_mask=None, device=device)
 
 # create discriminator data
@@ -37,7 +42,7 @@ disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 
 # set load and save file
 load_file = None
-save_file = "models/disc_model_F11_v1_ext2_study.pkl"
+save_file = "models/disc_model_F11_v1_ext2_study2.pkl"
 log_freq = 25
 acc_hor = 500
 
