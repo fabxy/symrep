@@ -25,7 +25,7 @@ except:
 
 class SDNet(nn.Module):
 
-    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=1e-3):
+    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=None, loss_fun=None):
         super().__init__()
 
         self.in_size = in_size
@@ -82,6 +82,11 @@ class SDNet(nn.Module):
         self.iters = iters
         self.gp = gp
 
+        if loss_fun == "BCE":
+            self.loss_fun = nn.BCEWithLogitsLoss(reduction='mean')
+        else:
+            self.loss_fun = None
+
     def forward(self, x):
         
         # embedding
@@ -92,8 +97,11 @@ class SDNet(nn.Module):
         
         return self.layers2(x)
 
-    def loss(self, x):
-        return self.forward(x).mean()
+    def loss(self, y, t):
+        if self.loss_fun:
+            return self.loss_fun(y, t)
+        else:
+            return (-1)**(t[0].item()) * y.mean()
 
     def gradient_penalty(self, data_real, data_fake):
         
@@ -123,6 +131,8 @@ class SDNet(nn.Module):
     def fit(self, dataset_real, data_fake):
       
         accs = []
+        losses = []
+        grads = []
         for i in range(self.iters):
 
             if dataset_real.shape[0] == 1:
@@ -134,13 +144,14 @@ class SDNet(nn.Module):
 
             pred_real = self.forward(data_real)
             pred_fake = self.forward(data_fake)
-            
-            loss_real = -pred_real.mean()
-            loss_fake = pred_fake.mean()
+
+            loss_real = self.loss(pred_real, torch.ones_like(pred_real))
+            loss_fake = self.loss(pred_fake, torch.zeros_like(pred_fake))
             loss = loss_real + loss_fake
             
             if self.gp:
-                loss += self.gp * self.gradient_penalty(data_real, data_fake)
+                loss_gp = self.gradient_penalty(data_real, data_fake)
+                loss += self.gp * loss_gp
 
             loss.backward()
 
@@ -150,8 +161,10 @@ class SDNet(nn.Module):
                 pred_corr = (pred_real > 0).sum() + (pred_fake <= 0).sum()
                 pred_all = pred_real.shape[0] + pred_fake.shape[0]
                 accs.append((pred_corr / pred_all).item())
+                losses.append((loss_real.item(), loss_fake.item(), loss_gp.item() if self.gp else 0.0))
+                grads.append(self.layers2[-1].weight.grad.abs().max().item())
 
-        return accs
+        return accs, losses, grads
 
 
 class SDData(Dataset):
@@ -218,7 +231,7 @@ class SDData(Dataset):
         return torch.stack(iter_data)
 
 
-def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_file=None, save_file=None, log_freq=1, acc_hor=100, device=torch.device("cpu"), wandb_project=None):
+def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_file=None, save_file=None, log_freq=1, avg_hor=100, device=torch.device("cpu"), wandb_project=None):
 
     # load state for restart
     if load_file:
@@ -248,9 +261,12 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
 
     critic = disc_cls(disc_in_size, **hp['disc']).to(device)
     critic.train()
+    print(critic)
 
     # monitor statistics
     tot_accs = []
+    tot_losses = []
+    tot_grads = []
     stime = time.time()
     times = []
     epoch = 0
@@ -261,6 +277,8 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
         critic.optimizer.load_state_dict(state['disc_opt_state'])
 
         tot_accs = state['tot_accs']
+        tot_losses = state['tot_losses']
+        tot_grads = state['tot_grads']
         times = state['times']
         stime = time.time() - times[-1]
         epoch = len(times)
@@ -308,15 +326,17 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
             data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
 
         # train critic
-        accs = critic.fit(dataset_real, data_fake)
+        accs, losses, grads = critic.fit(dataset_real, data_fake)
 
         # monitor stats
-        tot_accs.append(np.mean(accs))
+        tot_accs.append(accs)
+        tot_losses.append(losses)
+        tot_grads.append(grads)
         times.append(time.time() - stime)
 
         if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
                     
-            t_update = {"acc": tot_accs[-1], "avg_acc": np.mean(tot_accs[-acc_hor:])}
+            t_update = {"acc": tot_accs[-1][-1], "avg_acc": np.mean([a[-1] for a in tot_accs[-avg_hor:]])}
             t.set_postfix({k: f"{v:.2f}" for k, v in t_update.items()})
             if wandb_project:
                 t_update["epoch"] = epoch
@@ -331,6 +351,8 @@ def run_training(disc_cls, model_cls, hyperparams, train_data, disc_data, load_f
         "seed_state": torch.get_rng_state(),
         "hyperparams": hp._items if wandb_project else hp,
         "tot_accs": tot_accs,
+        "tot_losses": tot_losses,
+        "tot_grads": tot_grads,
         "times": times,
         "data_path": train_data.path,
         "in_var": train_data.in_var,

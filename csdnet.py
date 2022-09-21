@@ -5,7 +5,7 @@ from torch.autograd import Variable, grad
 
 class CSDNet(nn.Module):
 
-    def __init__(self, in_size, conv_arch=[16], kernel_size=3, hid_num=1, hid_size=100, emb_size=1, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=1e-3):
+    def __init__(self, in_size, conv_arch=[16], kernel_size=3, hid_num=1, hid_size=100, emb_size=1, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=None, loss_fun=None):
         super().__init__()
 
         # convolutional layers
@@ -44,6 +44,11 @@ class CSDNet(nn.Module):
         self.iters = iters
         self.gp = gp
 
+        if loss_fun == "BCE":
+            self.loss_fun = nn.BCEWithLogitsLoss(reduction='mean')
+        else:
+            self.loss_fun = None
+
     def forward(self, x):
         
         # convolution
@@ -54,8 +59,11 @@ class CSDNet(nn.Module):
 
         return self.layers2(x)
 
-    def loss(self, x):
-        return self.forward(x).mean()
+    def loss(self, y, t):
+        if self.loss_fun:
+            return self.loss_fun(y, t)
+        else:
+            return (-1)**(t[0].item()) * y.mean()
 
     def gradient_penalty(self, data_real, data_fake):
         
@@ -87,6 +95,8 @@ class CSDNet(nn.Module):
         data_fake = data_fake.transpose(1,2)
       
         accs = []
+        losses = []
+        grads = []
         for i in range(self.iters):
 
             if dataset_real.shape[0] == 1:
@@ -99,12 +109,13 @@ class CSDNet(nn.Module):
             pred_real = self.forward(data_real)
             pred_fake = self.forward(data_fake)
             
-            loss_real = -pred_real.mean()
-            loss_fake = pred_fake.mean()
+            loss_real = self.loss(pred_real, torch.ones_like(pred_real))
+            loss_fake = self.loss(pred_fake, torch.zeros_like(pred_fake))
             loss = loss_real + loss_fake
             
             if self.gp:
-                loss += self.gp * self.gradient_penalty(data_real, data_fake)
+                loss_gp = self.gradient_penalty(data_real, data_fake)
+                loss += self.gp * loss_gp
 
             loss.backward()
 
@@ -114,5 +125,7 @@ class CSDNet(nn.Module):
                 pred_corr = (pred_real > 0).sum() + (pred_fake <= 0).sum()
                 pred_all = pred_real.shape[0] + pred_fake.shape[0]
                 accs.append((pred_corr / pred_all).item())
+                losses.append((loss_real.item(), loss_fake.item(), loss_gp.item() if self.gp else 0.0))
+                grads.append(self.layers2[-1].weight.grad.abs().max().item())
 
-        return accs
+        return accs, losses, grads

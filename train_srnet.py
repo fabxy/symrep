@@ -9,25 +9,36 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "142-bn-mask-DSN-sd-study-F09_v1"
+wandb_project = None
 sweep_id = None
 sweep_num = None
+
+# select generator and discriminator
+model_cls = SRNet
+disc_cls = SDNet
 
 # load data
 data_path = "data_1k"
 
-in_var = "X09"
-lat_var = "G09"
-target_var = "F09"
+in_var = "X11"
+lat_var = "G11"
+target_var = "F11"
 
 mask_ext = ".mask"
-masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
+try:
+    masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
+    train_mask = masks['train']
+    val_mask = masks['val']
+except:
+    train_mask = None
+    val_mask = None
+    print("Warning: No masks for training and validation loaded.")
 
-train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
-val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
+train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
+val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
 # create discriminator data
-fun_path = "funs/F09_v1.lib"
+fun_path = "funs/F11_v1.lib"
 shuffle = True
 iter_sample = False
     
@@ -38,7 +49,8 @@ else:
 
 # set load and save file
 load_file = None
-save_file = "models/srnet_model_F09_v1_bn_mask_sd_study_opt_r1_max.pkl"
+disc_file = "discs/disc_model_F11_v1_fixed_BCE.pkl"
+save_file = "models/srnet_model_F11_v1_critic_study.pkl"
 log_freq = 25
 
 # define hyperparameters
@@ -46,22 +58,22 @@ hyperparams = {
     "arch": {
         "in_size": train_data.in_data.shape[1],
         "out_size": train_data.target_data.shape[1],
-        "hid_num": (2,0),
-        "hid_size": 32, 
-        "hid_type": ("DSN", "MLP"),
+        "hid_num": (2, 2),
+        "hid_size": (32, 32), 
+        "hid_type": ("MLP", "MLP"),
         "hid_kwargs": {
-            "alpha": [[1,0],[0,1],[1,0],[1,1],[1,1]],
+            "alpha": None,
             "norm": None,
             "prune": None,
             },
-        "lat_size": 5,
+        "lat_size": 3,
         },
-    "epochs": 150000,
+    "epochs": 20000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
-    "lr": 1e-5,
-    "wd": 1e-6,
+    "lr": 1e-4,
+    "wd": 1e-7,
     "l1": 0.0,
     "a1": 0.0,
     "a2": 0.0,
@@ -69,21 +81,25 @@ hyperparams = {
     "e2": 0.0,
     "e3": 0.0,
     "gc": 0.0,
-    "sd": 1e-7,
-    "disc": {
-        "hid_num": 6,
-        "hid_size": 64,
-        "emb_size": None,
-        "lr": 1e-2,
-        "wd": 1e-7,
-        "betas": (0.9,0.999),
-        "iters": 8,
-        "gp": 1e-4,
-    },
+    "sd": 1e-4,
+    "sd_fun": "linear",
+    # "ext": None,
+    # "ext_type": None,
+    # "ext_size": 0,
+    # "disc": {
+    #     "hid_num": 1,
+    #     "hid_size": 64,
+    #     "lr": 1e-4,
+    #     "wd": 1e-7,
+    #     "betas": (0.9,0.999),
+    #     "iters": 5,
+    #     "gp": 0.0,
+    #     "loss_fun": "BCE",
+    # },
 }
 
 def train():
-    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
 
 if __name__ == "__main__":
 

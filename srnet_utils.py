@@ -46,7 +46,7 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
     return model_names
 
 
-def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None, uncertainty=False):
+def plot_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
@@ -62,25 +62,124 @@ def plot_accuracies(save_names, save_path=".", excl_names=list(), acc_hor=None, 
                 label = file_name.split('.')[0]
                 model_names.append(label)
 
-                # calculate average accuracies
-                if acc_hor is not None:
-                    accs = [np.mean(state['tot_accs'][max(0,i+1-acc_hor):i+1]) for i in range(len(state['tot_accs']))]
-                else:
-                    accs = state['tot_accs']
+                # calculate accuracies
+                try:
+                    tot_accs = np.array(state['tot_accs'])[:,-1]
+                except:
+                    # legacy
+                    tot_accs = np.array(state['tot_accs'])
 
-                # plot average accuracies
-                epochs = np.arange(len(accs))
-                lines = ax.plot(accs, label=label)
+                if avg_hor is not None:
+                    avg_accs = np.array([tot_accs[max(0,i+1-avg_hor):i+1].mean() for i in range(tot_accs.shape[0])])
+                else:
+                    avg_accs = tot_accs
+                
+                # plot accuracies
+                epochs = np.arange(avg_accs.shape[0])
+                lines = ax.plot(avg_accs, label=label)
 
                 # plot uncertainty
-                if acc_hor is not None and uncertainty:
-                    acc_stds = [np.std(state['tot_accs'][max(0,i+1-acc_hor):i+1]) for i in range(len(state['tot_accs']))]
-                    acc_nstds = [accs[i] - acc_stds[i] for i in range(len(accs))]
-                    acc_pstds = [accs[i] + acc_stds[i] for i in range(len(accs))]
-                    ax.fill_between(epochs, acc_nstds, acc_pstds, alpha=0.25)
+                if avg_hor is not None and uncertainty:
+                    std_accs = np.array([tot_accs[max(0,i+1-avg_hor):i+1].std() for i in range(tot_accs.shape[0])])
+                    ax.fill_between(epochs, avg_accs-std_accs, avg_accs+std_accs, alpha=0.25)
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Accuracy")
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
+def plot_disc_losses(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False, summation=True):
+
+    _, ax = plt.subplots()
+
+    styles = ['-', '--', ':']
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                # calculate losses
+                tot_losses = np.array(state['tot_losses'])[:,-1,:]
+
+                # correct gradient penalty
+                if 'gp' in state['hyperparams']['disc']: 
+                    tot_losses[:,-1] *= state['hyperparams']['disc']['gp']
+                
+                if summation:
+                    tot_losses = tot_losses.sum(axis=1).reshape(-1,1)
+
+                if avg_hor is not None:
+                    avg_losses = np.array([tot_losses[max(0,i+1-avg_hor):i+1].mean(axis=0) for i in range(tot_losses.shape[0])])
+                else:
+                    avg_losses = tot_losses
+                
+                # plot losses
+                epochs = np.arange(avg_losses.shape[0])
+                for i in range(avg_losses.shape[1]):
+                    if i == 0:
+                        lines = ax.plot(avg_losses[:,i], label=label)
+                    else:
+                        lines = ax.plot(avg_losses[:,i], color=lines[-1].get_color(), ls=styles[i])
+
+                # plot uncertainty
+                if avg_hor is not None and uncertainty and summation:
+                    std_losses = np.array([tot_losses[max(0,i+1-avg_hor):i+1].std(axis=0) for i in range(tot_losses.shape[0])])
+                    ax.fill_between(epochs, (avg_losses-std_losses)[:,0], (avg_losses+std_losses)[:,0], alpha=0.25)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Losses")
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
+def plot_gradients(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
+
+    _, ax = plt.subplots()
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                # calculate gradients
+                tot_grads = np.array(state['tot_grads'])[:,-1]
+
+                if avg_hor is not None:
+                    avg_grads = np.array([tot_grads[max(0,i+1-avg_hor):i+1].mean() for i in range(tot_grads.shape[0])])
+                else:
+                    avg_grads = tot_grads
+                
+                # plot gradients
+                epochs = np.arange(avg_grads.shape[0])
+                lines = ax.plot(avg_grads, label=label)
+
+                # plot uncertainty
+                if avg_hor is not None and uncertainty:
+                    std_grads = np.array([tot_grads[max(0,i+1-avg_hor):i+1].std() for i in range(tot_grads.shape[0])])
+                    ax.fill_between(epochs, avg_grads-std_grads, avg_grads+std_grads, alpha=0.25)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Max. Gradient")
     ax.legend()
     plt.show()
 

@@ -197,12 +197,28 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, save_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
+def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, disc_file=None, save_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
 
     # load state for restart
     if load_file:
         state = joblib.load(load_file)
         hyperparams = dict(state['hyperparams'], **hyperparams)
+
+    # load state of discriminator
+    if disc_file:
+        disc_state = joblib.load(disc_file)
+        hyperparams['disc'] = disc_state['hyperparams']['disc']
+        try:
+            hyperparams['ext'] = disc_state['hyperparams']['ext']
+            hyperparams['ext_type'] = disc_state['hyperparams']['ext_type']
+            hyperparams['ext_size'] = disc_state['hyperparams']['ext_size']
+        except:
+            hyperparams['ext'] = None
+            hyperparams['ext_type'] = None
+            hyperparams['ext_size'] = 0
+
+        # loaded discriminator is not trained further
+        hyperparams['disc']['iters'] = 0
 
     # initialize wandb
     if wandb_project:
@@ -219,6 +235,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     # create model
     model = model_cls(**hp['arch']).to(device)
     model.train()
+    print(model)
 
     # create ghost model
     if 'gc' in hp and hp['gc'] > 0:
@@ -236,7 +253,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     else:
         optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
 
-    # create discriminator
+    # create discriminator and prediction function
     if 'sd' in hp and hp['sd'] > 0:
 
         disc_in_size = hp['batch_size']
@@ -249,6 +266,12 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
         critic = disc_cls(disc_in_size, **hp['disc']).to(device)
         critic.train()
+        print(critic)
+
+        if 'sd_fun' == "sigmoid":
+            predict = nn.Sigmoid()
+        else:
+            predict = nn.Identity()
 
     # monitor statistics
     train_loss = []
@@ -258,12 +281,17 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     times = []
     epoch = 0
     
+    # restart discriminator
+    if disc_file and 'sd' in hp and hp['sd'] > 0:
+        critic.load_state_dict(disc_state['disc_state'])
+        critic.optimizer.load_state_dict(disc_state['disc_opt_state'])
+
     # restart training                                                                              # TODO: check out how to continue a run in wandb
     if load_file:
         model.load_state_dict(state['model_state'])
         optimizer.load_state_dict(state['optimizer_state'])
         
-        if 'sd' in hp and hp['sd'] > 0:
+        if not disc_file and 'sd' in hp and hp['sd'] > 0:
             try:
                 critic.load_state_dict(state['disc_state'])
                 critic.optimizer.load_state_dict(state['disc_opt_state'])
@@ -353,44 +381,62 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 loss += hp['e3'] * entropy.pow(2).sum()
 
             if 'sd' in hp and hp['sd'] > 0:
-                # get real and fake data
-                try:
-                    datasets_real = disc_data.get(lat_acts.shape[1])
-                except:
-                    if disc_data.iter_sample:
-                        datasets_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
-                    else:
-                        datasets_real = disc_data.get(lat_acts.shape[1], in_data)
-                
-                dataset_real = datasets_real[...,0]
-                data_fake = lat_acts.detach().T
-                
-                # extend real and fake data
-                ext_data_real = []
+
+                # get fake extension data
                 ext_data_fake = []
                 if 'ext' in hp and hp['ext'] is not None:
                     for ext_name in hp['ext']:
                         if ext_name == "input":
-                            ext_data_real.append(in_data)
                             ext_data_fake.append(in_data)
                         elif ext_name == "grad":
-                            grad_data_real = datasets_real[...,1:]                                                  # iters x lat x batch x grad
                             grad_data_fake = reg_model.jacobian(in_data, get_lat=True).transpose(0,1)               # lat x batch x grad
-                            ext_data_real.append(grad_data_real)
                             ext_data_fake.append(grad_data_fake.detach())
                         else:
                             raise KeyError(f"Extension {ext_name} is not defined.")
+
+                if critic.iters > 0:
+
+                    # get fake data
+                    data_fake = lat_acts.detach().T
+                   
+                    # get real data
+                    try:
+                        datasets_real = disc_data.get(lat_acts.shape[1])
+                    except:
+                        if disc_data.iter_sample:
+                            datasets_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
+                        else:
+                            datasets_real = disc_data.get(lat_acts.shape[1], in_data)
                     
-                    dataset_real = ut.extend(dataset_real, *ext_data_real, ext_type=hp['ext_type'])
-                    data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
-              
-                # train discriminator
-                critic.fit(dataset_real, data_fake)
+                    dataset_real = datasets_real[...,0]
                 
-                # regularize with critic loss
+                    # get real extension data
+                    ext_data_real = []
+                    if 'ext' in hp and hp['ext'] is not None:
+                        for ext_name in hp['ext']:
+                            if ext_name == "input":
+                                ext_data_real.append(in_data)
+                            elif ext_name == "grad":
+                                grad_data_real = datasets_real[...,1:]                                              # iters x lat x batch x grad
+                                ext_data_real.append(grad_data_real)
+                            else:
+                                raise KeyError(f"Extension {ext_name} is not defined.")
+                        
+                        # extend real and fake data
+                        dataset_real = ut.extend(dataset_real, *ext_data_real, ext_type=hp['ext_type'])
+                        data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
+                
+                    # train discriminator
+                    critic.fit(dataset_real, data_fake)
+                
+                # extend latent activations
                 # TODO: what is the extension data here? do we use grad_data_fake detached or not detached? check softplus activation function
-                data_acts = ut.extend(lat_acts.T, *ext_data_fake, ext_type=hp['ext_type'])
-                loss += -1 * hp['sd'] * critic.loss(data_acts)
+                data_acts = lat_acts.T
+                if 'ext' in hp and hp['ext'] is not None:
+                    data_acts = ut.extend(data_acts, *ext_data_fake, ext_type=hp['ext_type'])
+
+                # regularize with critic loss
+                loss += hp['sd'] * predict(-critic(data_acts)).mean()
 
             loss.backward()
 
@@ -409,7 +455,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 
                 if val_data.lat_data is not None:
                     ls = lat_acts.shape[1]
-                    corr = torch.corrcoef(torch.hstack((lat_acts, val_data.lat_data)).T)            # TODO: train or val correlation?
+                    corr = torch.corrcoef(torch.hstack((lat_acts, val_data.lat_data)).T)
                     corr_mat.append(corr[:ls, -ls:])
 
             model.train()
@@ -485,24 +531,35 @@ if __name__ == '__main__':
     sweep_id = None
     sweep_num = None
 
+    # select generator and discriminator
+    model_cls = SRNet
+    disc_cls = SDNet
+
     # load data
     data_path = "data_1k"
-    
-    in_var = "X07"
-    lat_var = "G07"
-    target_var = "F07"
+
+    in_var = "X11"
+    lat_var = "G11"
+    target_var = "F11"
 
     mask_ext = ".mask"
-    masks = joblib.load(os.path.join(data_path, in_var + mask_ext))                                 # TODO: create mask if file does not exist
+    try:
+        masks = joblib.load(os.path.join(data_path, in_var + mask_ext))
+        train_mask = masks['train']
+        val_mask = masks['val']
+    except:
+        train_mask = None
+        val_mask = None
+        print("Warning: No masks for training and validation loaded.")
 
-    train_data = SRData(data_path, in_var, lat_var, target_var, masks["train"], device=device)
-    val_data = SRData(data_path, in_var, lat_var, target_var, masks["val"], device=device)
+    train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
+    val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
     # create discriminator data
-    fun_path = "funs/F07_v2.lib"
+    fun_path = "funs/F11_v1.lib"
     shuffle = True
     iter_sample = False
-    
+
     if fun_path:
         disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
     else:
@@ -510,6 +567,7 @@ if __name__ == '__main__':
     
     # set load and save file
     load_file = None
+    disc_file = None
     save_file = None
     log_freq = 1
 
@@ -518,11 +576,11 @@ if __name__ == '__main__':
         "arch": {
             "in_size": train_data.in_data.shape[1],
             "out_size": train_data.target_data.shape[1],
-            "hid_num": (2,0),
-            "hid_size": 32, 
-            "hid_type": ("DSN", "MLP"),
+            "hid_num": (2, 2),
+            "hid_size": (32, 32),
+            "hid_type": ("MLP", "MLP"),
             "hid_kwargs": {
-                "alpha": [[1,0],[0,1],[1,1]],
+                "alpha": None,
                 "norm": None,
                 "prune": None,
                 },
@@ -533,7 +591,7 @@ if __name__ == '__main__':
         "batch_size": train_data.in_data.shape[0],
         "shuffle": False,
         "lr": 1e-4,
-        "wd": 1e-6,
+        "wd": 1e-7,
         "l1": 0.0,
         "a1": 0.0,
         "a2": 0.0,
@@ -541,19 +599,21 @@ if __name__ == '__main__':
         "e2": 0.0,
         "e3": 0.0,
         "gc": 0.0,
-        "sd": 1e-6,
-        "ext": ["input", "grad"],
-        "ext_type": "stack",
-        "ext_size": 4,
+        "sd": 1e-4,
+        "sd_fun": "sigmoid",
+        "ext": None,
+        "ext_type": None,
+        "ext_size": 0,
         "disc": {
-            "hid_num": 6,
-            "hid_size": 128,
-            "lr": 1e-3,
-            "wd": 1e-4,
+            "hid_num": 2,
+            "hid_size": 64,
+            "lr": 1e-4,
+            "wd": 1e-7,
             "betas": (0.9,0.999),
             "iters": 5,
-            "gp": 1e-5,
+            "gp": 0.0,
+            "loss_fun": "BCE",
         },
     }
 
-    run_training(SRNet, hyperparams, train_data, val_data, SDNet, disc_data, load_file=load_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
