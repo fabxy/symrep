@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "173-fixed-critic-study-F11_v1"
-sweep_id = "mbouqs5g"
+sweep_id = "r4tdv7lp"
 sweep_num = 15
 
 # select generator and discriminator
@@ -82,7 +82,7 @@ hyperparams = {
     "e3": 0.0,
     "gc": 0.0,
     "sd": 1e-4,
-    "sd_fun": "linear",
+    "sd_fun": "sigmoid",
     # "ext": None,
     # "ext_type": None,
     # "ext_size": 0,
