@@ -9,9 +9,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = None
-sweep_id = None
-sweep_num = None
+wandb_project = "173-fixed-critic-study-F11_v1"
+sweep_id = "mbouqs5g"
+sweep_num = 15
 
 # select generator and discriminator
 model_cls = SRNet
