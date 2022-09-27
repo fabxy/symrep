@@ -10,7 +10,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
 wandb_project = "173-fixed-critic-study-F11_v1"
-sweep_id = "zrgxhfqh"
+sweep_id = "xod3t6v2"
 sweep_num = 15
 
 # select generator and discriminator
@@ -50,7 +50,7 @@ else:
 # set load and save file
 load_file = None
 disc_file = "discs/disc_model_F11_v1_fixed_BCE.pkl"
-save_file = "models/srnet_model_F11_v1_critic_study_lin.pkl"
+save_file = "models/srnet_model_F11_v1_critic_study_sig.pkl"
 log_freq = 25
 
 # define hyperparameters
@@ -82,7 +82,7 @@ hyperparams = {
     "e3": 0.0,
     "gc": 0.0,
     "sd": 1e-4,
-    "sd_fun": "linear",
+    "sd_fun": "sigmoid",
     # "ext": None,
     # "ext_type": None,
     # "ext_size": 0,
