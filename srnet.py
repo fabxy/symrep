@@ -268,7 +268,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         critic.train()
         print(critic)
 
-        if 'sd_fun' == "sigmoid":
+        if hp['sd_fun'] == "sigmoid":
             predict = nn.Sigmoid()
         else:
             predict = nn.Identity()
