@@ -20,7 +20,7 @@ disc_cls = SDNet
 
 # load data
 data_path = "data_1k"
-in_var = "X11"
+in_var = "X07"
 lat_var = None
 target_var = None
 
@@ -30,19 +30,20 @@ try:
     mask = masks['train']
 except:
     mask = None
+    print("Warning: No mask for training loaded.")
 
 train_data = SRData(data_path, in_var, data_mask=mask, device=device)
 # train_data.in_data = train_data.in_data[:,:1].sort(0)[0]
 
 # create discriminator data
-fun_path = "funs/F11_v1.lib"
+fun_path = "funs/F07_v2.lib"
 shuffle = True
 iter_sample = False
 disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 
 # set load and save file
 load_file = None
-save_file = "models/disc_model_F11_v1_fixed_BCE.pkl"
+save_file = "models/disc_model_F07_v2_fixed_BCE.pkl"
 log_freq = 25
 avg_hor = 500
 
@@ -59,7 +60,7 @@ hyperparams = {
             "norm": None,
             "prune": None,
             },
-        "lat_size": 5,
+        "lat_size": 3,
     },
     "epochs": 20000,
     "runtime": None,

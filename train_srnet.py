@@ -9,8 +9,8 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "173-fixed-critic-study-F11_v1"
-sweep_id = "xod3t6v2"
+wandb_project = "183-fixed-critic-study-F07_v2"
+sweep_id = "al1sg08l"
 sweep_num = 15
 
 # select generator and discriminator
@@ -20,9 +20,9 @@ disc_cls = SDNet
 # load data
 data_path = "data_1k"
 
-in_var = "X11"
-lat_var = "G11"
-target_var = "F11"
+in_var = "X07"
+lat_var = "G07"
+target_var = "F07"
 
 mask_ext = ".mask"
 try:
@@ -38,7 +38,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=d
 val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
 # create discriminator data
-fun_path = "funs/F11_v1.lib"
+fun_path = "funs/F07_v2.lib"
 shuffle = True
 iter_sample = False
     
@@ -49,8 +49,8 @@ else:
 
 # set load and save file
 load_file = None
-disc_file = "discs/disc_model_F11_v1_fixed_BCE.pkl"
-save_file = "models/srnet_model_F11_v1_critic_study_sig.pkl"
+disc_file = "discs/disc_model_F07_v2_fixed_BCE.pkl"
+save_file = "models/srnet_model_F07_v2_critic_study.pkl"
 log_freq = 25
 
 # define hyperparameters
@@ -58,17 +58,17 @@ hyperparams = {
     "arch": {
         "in_size": train_data.in_data.shape[1],
         "out_size": train_data.target_data.shape[1],
-        "hid_num": (2, 2),
-        "hid_size": (32, 32), 
-        "hid_type": ("MLP", "MLP"),
+        "hid_num": (2, 0),
+        "hid_size": 32,
+        "hid_type": ("DSN", "MLP"),
         "hid_kwargs": {
-            "alpha": None,
+            "alpha": [[1,0],[0,1],[1,1]],
             "norm": None,
             "prune": None,
             },
         "lat_size": 3,
         },
-    "epochs": 20000,
+    "epochs": 50000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
@@ -87,7 +87,7 @@ hyperparams = {
     # "ext_type": None,
     # "ext_size": 0,
     # "disc": {
-    #     "hid_num": 1,
+    #     "hid_num": 2,
     #     "hid_size": 64,
     #     "lr": 1e-4,
     #     "wd": 1e-7,

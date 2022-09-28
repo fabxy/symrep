@@ -277,6 +277,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     train_loss = []
     val_loss = []
     corr_mat = []
+    disc_preds = []
     stime = time.time()
     times = []
     epoch = 0
@@ -307,6 +308,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         if 'corr_mat' in state:
             corr_mat = state['corr_mat']
 
+        if 'disc_preds' in state:
+            disc_preds = state['disc_preds']
+
         if 'seed_state' in state:
             torch.set_rng_state(state['seed_state'])
     
@@ -320,6 +324,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     for epoch in t:
 
         batch_loss = []
+        batch_disc_preds = []
         for in_data, target_data in loader:
 
             optimizer.zero_grad()
@@ -435,8 +440,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                 if 'ext' in hp and hp['ext'] is not None:
                     data_acts = ut.extend(data_acts, *ext_data_fake, ext_type=hp['ext_type'])
 
-                # regularize with critic loss
-                loss += hp['sd'] * predict(-critic(data_acts)).mean()
+                # regularize with critic prediction
+                p = critic(data_acts)
+                loss += hp['sd'] * predict(-p).mean()
+
+                batch_disc_preds.append(p.detach().mean().item())
 
             loss.backward()
 
@@ -445,6 +453,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             batch_loss.append(loss.item())
 
         train_loss.append(np.mean(batch_loss))
+        if batch_disc_preds:
+            disc_preds.append(np.mean(batch_disc_preds))
         times.append(time.time() - stime)
 
         if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
@@ -468,6 +478,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             if wandb_project:
                 t_update["epoch"] = epoch
                 t_update["time"] = times[-1]
+                if disc_preds:
+                    t_update["disc_preds"] = disc_preds[-1]
                 wandb.log(t_update)
         
         if hp["runtime"]:
@@ -489,6 +501,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         "train_loss": train_loss,
         "val_loss": val_loss,
         "corr_mat": corr_mat,
+        "disc_preds": disc_preds,
         "total_train_loss": total_train_loss,
         "total_val_loss": total_val_loss,
         "times": times,
