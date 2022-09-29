@@ -6,7 +6,7 @@ from collections import OrderedDict
 from scipy.stats import pearsonr
 import torch
 
-def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
+def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
 
     _, ax = plt.subplots()
 
@@ -40,13 +40,97 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None):
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
+    if log:
+        ax.set_yscale('log')
     ax.legend()
     plt.show()
 
     return model_names
 
 
-def plot_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
+def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
+
+    _, ax = plt.subplots()
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    if isinstance(label_var, str):
+        label_var = [label_var]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                # plot minimum correlation
+                min_corr = [c.abs().max(dim=1).values.min() for c in state['corr_mat']]
+
+                epochs = len(state['train_loss'])
+                logs = len(min_corr)
+                log_freq = int(np.ceil(epochs / logs))
+                x_data = np.arange(logs) * log_freq
+
+                ax.plot(x_data, min_corr, label=label)
+
+    if label_var:
+        ax.set_title('/'.join(label_var))
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Minimum correlation")
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
+def plot_disc_preds(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
+
+    _, ax = plt.subplots()
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    if isinstance(label_var, str):
+        label_var = [label_var]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                # plot average discriminator predictions
+                state['disc_preds']
+
+                epochs = len(state['train_loss'])
+                logs = len(state['disc_preds'])
+                log_freq = int(np.ceil(epochs / logs))
+                x_data = np.arange(logs) * log_freq
+
+                ax.plot(x_data, state['disc_preds'], label=label)
+
+    if label_var:
+        ax.set_title('/'.join(label_var))
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Avg. SD prediction")
+    if log:
+        ax.set_yscale('log')
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
+def plot_disc_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
@@ -145,7 +229,7 @@ def plot_disc_losses(save_names, save_path=".", excl_names=list(), avg_hor=None,
     return model_names
 
 
-def plot_gradients(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
+def plot_disc_gradients(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
