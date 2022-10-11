@@ -6,7 +6,7 @@ from collections import OrderedDict
 from scipy.stats import pearsonr
 import torch
 
-def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
+def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, log=False, disc_loss=False):
 
     _, ax = plt.subplots()
 
@@ -26,7 +26,10 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, lo
                 model_names.append(label)
                 
                 # plot training loss
-                lines = ax.plot(state['train_loss'], label=label)
+                if disc_loss:
+                    lines = ax.plot(np.array(state['train_loss']) - np.array(state['disc_loss']), label=label)
+                else:
+                    lines = ax.plot(state['train_loss'], label=label)
 
                 # plot validation loss
                 epochs = len(state['train_loss'])
@@ -34,6 +37,10 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, lo
                 log_freq = int(np.ceil(epochs / logs))
                 x_data = np.arange(logs) * log_freq
                 ax.plot(x_data, state['val_loss'], '--', color=lines[-1].get_color())
+
+                # plot discriminator regularization loss
+                if disc_loss:
+                    ax.plot(state['disc_loss'], ':', color=lines[-1].get_color())
 
     if label_var:
         ax.set_title('/'.join(label_var))
@@ -82,6 +89,44 @@ def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Minimum correlation")
+    ax.legend()
+    plt.show()
+
+    return model_names
+
+
+def plot_reg_percentage(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
+
+    _, ax = plt.subplots()
+
+    if isinstance(save_names, str):
+        save_names = [save_names]
+
+    if isinstance(label_var, str):
+        label_var = [label_var]
+
+    model_names = []
+    for save_name in save_names:
+        for file_name in sorted(os.listdir(save_path)):
+            if save_name in file_name and not any([n in file_name for n in excl_names]):
+
+                state = joblib.load(os.path.join(save_path, file_name))
+                label = file_name.split('.')[0]
+                model_names.append(label)
+
+                tot_loss = np.array(state['train_loss'])
+                disc_loss = np.array(state['disc_loss'])
+                pred_loss = tot_loss - disc_loss
+
+                lines = ax.plot(np.abs(disc_loss)/(np.abs(disc_loss) + np.abs(pred_loss)), label=label)
+
+    if label_var:
+        ax.set_title('/'.join(label_var))
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Critic regularization percentage")
+    if log:
+        ax.set_yscale('log')
     ax.legend()
     plt.show()
 
