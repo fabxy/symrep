@@ -6,7 +6,7 @@ from collections import OrderedDict
 from scipy.stats import pearsonr
 import torch
 
-def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, log=False, disc_loss=False):
+def plot_losses(save_names, save_path=".", save_ext="pkl", excl_names=list(), label_var=None, log=False, disc_loss=False):
 
     _, ax = plt.subplots()
 
@@ -19,7 +19,7 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, lo
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
                 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
@@ -34,9 +34,14 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, lo
                 # plot validation loss
                 epochs = len(state['train_loss'])
                 logs = len(state['val_loss'])
-                log_freq = int(np.ceil(epochs / logs))
-                x_data = np.arange(logs) * log_freq
-                ax.plot(x_data, state['val_loss'], '--', color=lines[-1].get_color())
+
+                add_log = epochs % (logs - 1) == 0
+                log_freq = int(epochs / (logs - add_log))
+
+                log_epochs = np.arange(logs) * log_freq
+                log_epochs[-1] = epochs - 1
+
+                ax.plot(log_epochs, state['val_loss'], '--', color=lines[-1].get_color())
 
                 # plot discriminator regularization loss
                 if disc_loss:
@@ -55,7 +60,7 @@ def plot_losses(save_names, save_path=".", excl_names=list(), label_var=None, lo
     return model_names
 
 
-def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
+def plot_corrs(save_names, save_path=".", save_ext="pkl", excl_names=list(), label_var=None):
 
     _, ax = plt.subplots()
 
@@ -68,7 +73,7 @@ def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
@@ -79,10 +84,14 @@ def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
 
                 epochs = len(state['train_loss'])
                 logs = len(min_corr)
-                log_freq = int(np.ceil(epochs / logs))
-                x_data = np.arange(logs) * log_freq
 
-                ax.plot(x_data, min_corr, label=label)
+                add_log = epochs % (logs - 1) == 0
+                log_freq = int(epochs / (logs - add_log))
+
+                log_epochs = np.arange(logs) * log_freq
+                log_epochs[-1] = epochs - 1
+
+                ax.plot(log_epochs, min_corr, label=label)
 
     if label_var:
         ax.set_title('/'.join(label_var))
@@ -95,7 +104,7 @@ def plot_corrs(save_names, save_path=".", excl_names=list(), label_var=None):
     return model_names
 
 
-def plot_reg_percentage(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
+def plot_reg_percentage(save_names, save_path=".", save_ext="pkl", excl_names=list(), label_var=None, log=False):
 
     _, ax = plt.subplots()
 
@@ -108,7 +117,7 @@ def plot_reg_percentage(save_names, save_path=".", excl_names=list(), label_var=
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
@@ -133,7 +142,7 @@ def plot_reg_percentage(save_names, save_path=".", excl_names=list(), label_var=
     return model_names
 
 
-def plot_disc_preds(save_names, save_path=".", excl_names=list(), label_var=None, log=False):
+def plot_disc_preds(save_names, save_path=".", save_ext="pkl", excl_names=list(), label_var=None, log=False):
 
     _, ax = plt.subplots()
 
@@ -146,21 +155,14 @@ def plot_disc_preds(save_names, save_path=".", excl_names=list(), label_var=None
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
                 model_names.append(label)
 
                 # plot average discriminator predictions
-                state['disc_preds']
-
-                epochs = len(state['train_loss'])
-                logs = len(state['disc_preds'])
-                log_freq = int(np.ceil(epochs / logs))
-                x_data = np.arange(logs) * log_freq
-
-                ax.plot(x_data, state['disc_preds'], label=label)
+                ax.plot(state['disc_preds'], label=label)
 
     if label_var:
         ax.set_title('/'.join(label_var))
@@ -175,7 +177,7 @@ def plot_disc_preds(save_names, save_path=".", excl_names=list(), label_var=None
     return model_names
 
 
-def plot_disc_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
+def plot_disc_accuracies(save_names, save_path=".", save_ext="pkl", excl_names=list(), avg_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
@@ -185,7 +187,7 @@ def plot_disc_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=N
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
@@ -220,7 +222,7 @@ def plot_disc_accuracies(save_names, save_path=".", excl_names=list(), avg_hor=N
     return model_names
 
 
-def plot_disc_losses(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False, summation=True):
+def plot_disc_losses(save_names, save_path=".", save_ext="pkl", excl_names=list(), avg_hor=None, uncertainty=False, summation=True):
 
     _, ax = plt.subplots()
 
@@ -232,7 +234,7 @@ def plot_disc_losses(save_names, save_path=".", excl_names=list(), avg_hor=None,
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]
@@ -274,7 +276,7 @@ def plot_disc_losses(save_names, save_path=".", excl_names=list(), avg_hor=None,
     return model_names
 
 
-def plot_disc_gradients(save_names, save_path=".", excl_names=list(), avg_hor=None, uncertainty=False):
+def plot_disc_gradients(save_names, save_path=".", save_ext="pkl", excl_names=list(), avg_hor=None, uncertainty=False):
 
     _, ax = plt.subplots()
 
@@ -284,7 +286,7 @@ def plot_disc_gradients(save_names, save_path=".", excl_names=list(), avg_hor=No
     model_names = []
     for save_name in save_names:
         for file_name in sorted(os.listdir(save_path)):
-            if save_name in file_name and not any([n in file_name for n in excl_names]):
+            if save_name in file_name and file_name[-len(save_ext):] == save_ext and not any([n in file_name for n in excl_names]):
 
                 state = joblib.load(os.path.join(save_path, file_name))
                 label = file_name.split('.')[0]

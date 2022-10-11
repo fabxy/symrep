@@ -197,7 +197,7 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, disc_file=None, save_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
+def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, disc_file=None, save_file=None, rec_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
 
     # load state for restart
     if load_file:
@@ -279,6 +279,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     corr_mat = []
     disc_preds = []
     disc_loss = []
+    rec_acts = []
     stime = time.time()
     times = []
     epoch = 0
@@ -474,6 +475,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
                     corr = torch.corrcoef(torch.hstack((lat_acts, val_data.lat_data)).T)
                     corr_mat.append(corr[:ls, -ls:])
 
+                if rec_file is not None:
+                    w = model.layers2[0].weight
+                    b = model.layers2[0].bias
+                    rec_acts.append(lat_acts * w + b)
+
             model.train()
         
             t_update = {"train_loss": train_loss[-1], "val_loss": val_loss[-1]}
@@ -536,6 +542,14 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         if wandb_project:
             wandb.save(save_file)
 
+    if rec_file:
+        os.makedirs(os.path.dirname(os.path.abspath(rec_file)), exist_ok=True)
+        joblib.dump(rec_acts, rec_file)
+
+        # TODO: do we want to save recordings to wandb?
+        if wandb_project:
+            wandb.save(rec_file)
+
     if wandb_project:
         wandb.finish()
 
@@ -590,6 +604,7 @@ if __name__ == '__main__':
     load_file = None
     disc_file = None
     save_file = None
+    rec_file = None
     log_freq = 1
 
     # define hyperparameters
@@ -637,4 +652,4 @@ if __name__ == '__main__':
         },
     }
 
-    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, rec_file=rec_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
