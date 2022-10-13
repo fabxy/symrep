@@ -9,9 +9,9 @@ import wandb
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set wandb options
-wandb_project = "182-fixed-critic-check-F07_v2"
-sweep_id = "c8zf88ty"
-sweep_num = 8
+wandb_project = "184-DSN-SD-comb-study-F07_v2"
+sweep_id = "y6np63gb"
+sweep_num = 20
 
 # select generator and discriminator
 model_cls = SRNet
@@ -49,8 +49,9 @@ else:
 
 # set load and save file
 load_file = None
-disc_file = "discs/disc_model_F07_v2_fixed_BCE.pkl"
-save_file = "models/srnet_model_F07_v2_critic_study.pkl"
+disc_file = None
+save_file = "models/srnet_model_F07_v2_DSN_SD_comb_study.pkl"
+rec_file = None
 log_freq = 25
 
 # define hyperparameters
@@ -81,25 +82,25 @@ hyperparams = {
     "e2": 0.0,
     "e3": 0.0,
     "gc": 0.0,
-    "sd": 1e-4,
-    "sd_fun": "sigmoid",
-    # "ext": None,
-    # "ext_type": None,
-    # "ext_size": 0,
-    # "disc": {
-    #     "hid_num": 2,
-    #     "hid_size": 64,
-    #     "lr": 1e-4,
-    #     "wd": 1e-7,
-    #     "betas": (0.9,0.999),
-    #     "iters": 5,
-    #     "gp": 0.0,
-    #     "loss_fun": "BCE",
-    # },
+    "sd": 1.0,
+    "sd_fun": "linear",
+    "ext": None,
+    "ext_type": None,
+    "ext_size": 0,
+    "disc": {
+        "hid_num": 2,
+        "hid_size": 64,
+        "lr": 1e-4,
+        "wd": 1e-7,
+        "betas": (0.9,0.999),
+        "iters": 5,
+        "gp": 0.0,
+        "loss_fun": "BCE",
+    },
 }
 
 def train():
-    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, rec_file=rec_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
 
 if __name__ == "__main__":
 

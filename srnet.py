@@ -225,6 +225,8 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
         if save_file:
+            save_file_ext = '.' + save_file.split('.')[-1]
+            save_file = save_file.replace(save_file_ext, f"_{wandb.run.id}{save_file_ext}")
             wandb.run.name = os.path.basename(save_file.format(**hp, **hp['arch'])).split('.')[0]
     else:
         hp = hyperparams
@@ -269,9 +271,11 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         print(critic)
 
         if hp['sd_fun'] == "sigmoid":
-            predict = nn.Sigmoid()
+            predict = lambda x: F.sigmoid(-x)
+        elif hp['sd_fun'] == "logsigmoid":
+            predict = lambda x: -F.logsigmoid(x)
         else:
-            predict = nn.Identity()
+            predict = lambda x: -x
 
     # monitor statistics
     train_loss = []
@@ -446,7 +450,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
                 # regularize with critic prediction
                 p = critic(data_acts)
-                l = hp['sd'] * predict(-p).mean()
+                l = hp['sd'] * predict(p).mean()
                 loss += l
 
                 batch_disc_preds.append(p.detach().mean().item())
