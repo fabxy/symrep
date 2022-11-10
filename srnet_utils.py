@@ -80,7 +80,10 @@ def plot_corrs(save_names, save_path=".", save_ext="pkl", excl_names=list(), lab
                 model_names.append(label)
 
                 # plot minimum correlation
-                min_corr = [c.abs().max(dim=1).values.min() for c in state['corr_mat']]
+                try:
+                    min_corr = [c.abs().max(dim=1).values.min().item() for c in state['corr_mat']]
+                except:
+                    min_corr = [min([c.abs().max(dim=1).values.min().item() for c in corr]) for corr in state['corr_mat']]
 
                 epochs = len(state['train_loss'])
                 logs = len(min_corr)

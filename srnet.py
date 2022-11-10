@@ -8,12 +8,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
-from torch.autograd import Variable, grad
 import wandb
 
 from collections.abc import Iterable
 from sjnn import SparseJacobianNN as SJNN
-from ghost import GhostAdam, GhostWrapper
 from sdnet import SDNet, SDData
 import srnet_utils as ut
 
@@ -26,123 +24,129 @@ except:
     from tqdm import trange
 
 
-class SRNet(nn.Module):
+class LinearTransform(nn.Module):
 
-    def __init__(self, in_size, out_size, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs=None, lat_size=25):
+    def __init__(self, in_size, bias=True):
         super().__init__()
 
-        # read number, size and type of hidden layers
-        if not isinstance(hid_num, Iterable):
-            hid_num1 = hid_num
-            hid_num2 = hid_num
+        self.w = nn.Parameter(torch.ones((1, in_size), requires_grad=True))
+        self.b = nn.Parameter(torch.zeros((1, in_size), requires_grad=bias))
+
+    def forward(self, x):
+        return x * self.w + self.b
+
+
+class MLP(nn.Module):
+
+    def __init__(self, in_size, out_size, hid_num, hid_size):
+        super().__init__()
+
+        if hid_num == 0:
+            layers = [nn.Linear(in_size, out_size)]
         else:
-            hid_num1, hid_num2 = hid_num
+            layers = [nn.Linear(in_size, hid_size), nn.ReLU()]
+
+            for _ in range(hid_num - 1):
+                layers.append(nn.Linear(hid_size, hid_size))
+                layers.append(nn.ReLU())
+
+            layers.append(nn.Linear(hid_size, out_size))
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layers(x)
+
+    def __getitem__(self, idx):
+        return self.layers[idx]
+
+
+class SRNet(nn.Module):
+
+    def __init__(self, in_size, lat_size, out_fun=None, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs=None, lin_trans=False):
+        super().__init__()
+
+        # read network specifications
+        if not isinstance(lat_size, Iterable):
+            lat_size = [lat_size]
+
+        if not isinstance(hid_num, Iterable):
+            hid_num = [hid_num]
 
         if not isinstance(hid_size, Iterable):
-            hid_size1 = hid_size
-            hid_size2 = hid_size
-        else:
-            hid_size1, hid_size2 = hid_size
+            hid_size = [hid_size]
 
         if isinstance(hid_type, str):
-            hid_type1 = hid_type
-            hid_type2 = hid_type
-        else:
-            hid_type1, hid_type2 = hid_type
+            hid_type = [hid_type]
 
         if hid_kwargs is None:
-            hid_kwargs1 = dict()
-            hid_kwargs2 = dict()
+            hid_kwargs = [dict()]
         elif isinstance(hid_kwargs, dict):
-            hid_kwargs1 = hid_kwargs
-            hid_kwargs2 = hid_kwargs
+            hid_kwargs = [hid_kwargs]
+
+        depth = max(len(lat_size), len(hid_num), len(hid_size), len(hid_type), len(hid_kwargs))
+
+        if len(lat_size) == 1: lat_size *= depth
+        if len(hid_num) == 1: hid_num *= depth
+        if len(hid_size) == 1: hid_size *= depth
+        if len(hid_type) == 1: hid_type *= depth
+        if len(hid_kwargs) == 1: hid_kwargs *= depth
+
+        # create network
+        lts = [LinearTransform(in_size) if lin_trans else nn.Identity()]
+        cells = []
+        sizes = [in_size, *lat_size]
+
+        for i in range(depth):
+
+            if hid_type[i] == "MLP":
+                cells.append(MLP(sizes[i], sizes[i+1], hid_num[i], hid_size[i]))
+
+            elif hid_type[i] == "DSN":
+                cells.append(SJNN(sizes[i], sizes[i+1], hid_size[i], hid_num[i]-1, **hid_kwargs[i]))
+
+            if lin_trans:
+                lts.append(LinearTransform(sizes[i+1]))
+            else:
+                lts.append(nn.Identity())
+
+        self.cells = nn.Sequential(*cells)
+        self.lts = nn.Sequential(*lts)
+
+        # final operation
+        if out_fun == "sum":
+            self.out = lambda x: x.sum(dim=1).unsqueeze(1)
+        elif out_fun is not None:
+            self.out = out_fun
         else:
-            hid_kwargs1, hid_kwargs2 = hid_kwargs
+            self.out = nn.Identity()
 
-        # layers from input to latent
-        if hid_type1 == "MLP":
-            if hid_num1 == 0:
-                layers1 = [nn.Linear(in_size, lat_size)]
-            else:
-                layers1 = [nn.Linear(in_size, hid_size1), nn.ReLU()]
+    def forward(self, x, get_io_data=False):
 
-                for _ in range(hid_num1 - 1):
-                    layers1.append(nn.Linear(hid_size1, hid_size1))
-                    layers1.append(nn.ReLU())
+        # initial linear transformation
+        x = self.lts[0](x)
 
-                layers1.append(nn.Linear(hid_size1, lat_size))
+        # loop over cells
+        io_data = []
+        for i in range(len(self.cells)):
 
-            self.layers1 = nn.Sequential(*layers1)
-        
-        elif hid_type1 == "DSN":
-            self.layers1 = SJNN(in_size, lat_size, hid_size1, hid_num1-1, **hid_kwargs1)
+            if get_io_data:
+                in_data = x
 
-        # layers from latent to output
-        if hid_type2 == "MLP":
-            if hid_num2 == 0:
-                layers2 = [nn.Linear(lat_size, out_size)]
-            else:
-                layers2 = [nn.Linear(lat_size, hid_size2), nn.ReLU()]
+            x = self.cells[i](x)
 
-                for _ in range(hid_num2 - 1):
-                    layers2.append(nn.Linear(hid_size2, hid_size2))
-                    layers2.append(nn.ReLU())
+            if get_io_data:
+                io_data.append((in_data, x))
 
-                layers2.append(nn.Linear(hid_size2, out_size))
+            x = self.lts[i+1](x)
 
-            self.layers2 = nn.Sequential(*layers2)
+        # final operation
+        x = self.out(x)
 
-        elif hid_type2 == "DSN":
-            self.layers2 = SJNN(in_size, lat_size, hid_size2, hid_num2-1, **hid_kwargs2)
-
-    def forward(self, in_data, get_lat=False):
-
-        # propagate from input to latent
-        x = self.layers1(in_data)
-        lat_acts = x
-
-        # propagate from latent to output
-        x = self.layers2(x)
-
-        if get_lat:
-            return (x, lat_acts)
+        if get_io_data:
+            return (x, io_data)
         else:
             return x
-
-    def jacobian(self, in_data, get_lat=True):
-
-        # option 1: slow
-        # jac = torch.autograd.functional.jacobian(model.layers1, in_data)
-        # jac = torch.diagonal(jac, dim1=0, dim2=2).permute(2,0,1)
-    
-        # option 2: not working
-        # jac = functorch.vmap(functorch.jacrev(model.layers1))(in_data)
-
-        # option 3:
-        in_data = Variable(in_data, requires_grad=True)
-        preds, lat_acts = self(in_data, get_lat=True)
-
-        if get_lat:
-            out_data = lat_acts
-        else:
-            out_data = preds
-
-        grads = []
-        for i in range(out_data.shape[1]):
-            grad_outputs = torch.zeros_like(out_data)
-            grad_outputs[:,i] = 1
-
-            grad_data = grad(
-                inputs=in_data,
-                outputs=out_data,
-                grad_outputs=grad_outputs,
-                create_graph=True,
-                retain_graph=True,
-            )[0]
-
-            grads.append(grad_data)
-
-        return torch.stack(grads).transpose(0,1)
 
 
 class SRData(Dataset):
@@ -156,9 +160,13 @@ class SRData(Dataset):
         self.ext = data_ext
         self.device = device
 
-        self.in_var = in_var                                          
-        self.lat_var = lat_var
+        self.in_var = in_var
         self.target_var = target_var
+
+        if isinstance(lat_var, str):
+            self.lat_var = [lat_var]
+        else:
+            self.lat_var = lat_var
 
         # load input data
         if self.in_var:
@@ -168,7 +176,7 @@ class SRData(Dataset):
 
         # load latent data
         if self.lat_var:
-            self.lat_data = self.load_data(self.lat_var)
+            self.lat_data = [self.load_data(var) for var in self.lat_var]
         else:
             self.lat_data = None
 
@@ -197,7 +205,15 @@ class SRData(Dataset):
         return self.in_data[idx], self.target_data[idx]
 
 
-def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=None, disc_data=None, load_file=None, disc_file=None, save_file=None, rec_file=None, log_freq=1, device=torch.device("cpu"), wandb_project=None):
+def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, disc_cls=None, disc_lib=None, load_file=None, disc_file=None, save_file=None, rec_file=None, log_freq=1, wandb_project=None, device=torch.device("cpu")):
+
+    # set seed
+    if seed is None:
+        seed = 0
+    elif save_file:
+        save_file = save_file.replace('.', f"_s{seed}.")
+
+    torch.manual_seed(seed)
 
     # load state for restart
     if load_file:
@@ -208,14 +224,6 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     if disc_file:
         disc_state = joblib.load(disc_file)
         hyperparams['disc'] = disc_state['hyperparams']['disc']
-        try:
-            hyperparams['ext'] = disc_state['hyperparams']['ext']
-            hyperparams['ext_type'] = disc_state['hyperparams']['ext_type']
-            hyperparams['ext_size'] = disc_state['hyperparams']['ext_size']
-        except:
-            hyperparams['ext'] = None
-            hyperparams['ext_type'] = None
-            hyperparams['ext_size'] = 0
 
         # loaded discriminator is not trained further
         hyperparams['disc']['iters'] = 0
@@ -224,24 +232,17 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     if wandb_project:
         wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
+
         if save_file:
-            save_file_ext = '.' + save_file.split('.')[-1]
-            save_file = save_file.replace(save_file_ext, f"_{wandb.run.id}{save_file_ext}")
+            save_file = save_file.replace('.', f"_{wandb.run.id}.")
             wandb.run.name = os.path.basename(save_file.format(**hp, **hp['arch'])).split('.')[0]
     else:
         hp = hyperparams
-
-    # set seed
-    torch.manual_seed(0)
 
     # create model
     model = model_cls(**hp['arch']).to(device)
     model.train()
     print(model)
-
-    # create ghost model
-    if 'gc' in hp and hp['gc'] > 0:
-        model = GhostWrapper(model)
 
     # create data loader
     loader = DataLoader(train_data, batch_size=hp['batch_size'], shuffle=hp['shuffle'])
@@ -250,23 +251,12 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     loss_fun = nn.MSELoss()
 
     # optimizer
-    if 'gc' in hp and hp['gc'] > 0:
-        optimizer = GhostAdam(model, lr=hp['lr'], weight_decay=hp['wd'], ghost_coeff=hp['gc'])
-    else:
-        optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
+    optimizer = optim.Adam(model.parameters(), lr=hp['lr'], weight_decay=hp['wd'])
 
     # create discriminator and prediction function
-    if 'sd' in hp and hp['sd'] > 0:
+    if hp.get('sd', 0):
 
-        disc_in_size = hp['batch_size']
-        try:
-            if hp['ext_type'] == "stack":
-                disc_in_size *= hp['ext_size'] + 1
-            elif hp['ext_type'] == "embed":
-                hp['disc']['emb_size'] = hp['ext_size'] + 1
-        except: pass
-
-        critic = disc_cls(disc_in_size, **hp['disc']).to(device)
+        critic = disc_cls(hp['batch_size'], **hp['disc']).to(device)
         critic.train()
         print(critic)
 
@@ -283,13 +273,13 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
     corr_mat = []
     disc_preds = []
     disc_loss = []
-    rec_acts = []
+    rec_io_data = []
     stime = time.time()
     times = []
     epoch = 0
     
     # restart discriminator
-    if disc_file and 'sd' in hp and hp['sd'] > 0:
+    if disc_file and hp.get('sd', 0):
         critic.load_state_dict(disc_state['disc_state'])
         critic.optimizer.load_state_dict(disc_state['disc_opt_state'])
 
@@ -298,7 +288,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         model.load_state_dict(state['model_state'])
         optimizer.load_state_dict(state['optimizer_state'])
         
-        if not disc_file and 'sd' in hp and hp['sd'] > 0:
+        if not disc_file and hp.get('sd', 0):
             try:
                 critic.load_state_dict(state['disc_state'])
                 critic.optimizer.load_state_dict(state['disc_opt_state'])
@@ -307,25 +297,16 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
         train_loss = state['train_loss']
         val_loss = state['val_loss']
-        times = state['times']
+        corr_mat = state['corr_mat']
+        disc_preds = state['disc_preds']
+        disc_loss = state['disc_loss']
+        rec_io_data = state['rec_io_data']
         stime = time.time() - times[-1]
+        times = state['times']
         epoch = len(train_loss)
 
-        if 'corr_mat' in state:
-            corr_mat = state['corr_mat']
-
-        if 'disc_loss' in state:
-            disc_preds = state['disc_preds']
-            disc_loss = state['disc_loss']
-
-        if 'seed_state' in state:
-            torch.set_rng_state(state['seed_state'])
+        torch.set_rng_state(state['seed_state'])
     
-    # NOTE: watching gradients and parameters is too slow
-    # if wandb_project:
-    #     batch_num = int(np.ceil(len(train_data) / hp["batch_size"]))
-    #     wandb.watch(model, loss_fun, log="all", log_freq=batch_num)
-
     # define training loop
     t = trange(epoch, hp['epochs'], desc="Epoch")
     for epoch in t:
@@ -337,119 +318,44 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
             optimizer.zero_grad()
 
-            preds, lat_acts = model(in_data, get_lat=True)
+            preds, io_data = model(in_data, get_io_data=True)
 
             loss = loss_fun(preds, target_data)
 
-            if 'gc' in hp and hp['gc'] > 0:
-                reg_model = model.ghost
-                preds, lat_acts = reg_model(in_data, get_lat=True)
-            else:
-                reg_model = model
+            if hp.get('l1', 0):
+                for i in range(len(io_data)):
+                    loss += hp['l1'] * model.lts[i+1](io_data[i][1]).abs().sum(dim=0).mean()
 
-            if 'l1' in hp and hp['l1'] > 0:              
-                loss += hp['l1'] * torch.sum(torch.abs(lat_acts)) / lat_acts.shape[1]
+            if hp.get('e1', 0):
+                for cell in model.cells:
+                    try:
+                        loss += cell.entropy_loss(hp['e1'])
+                    except:
+                        pass
 
-            if ('a1' in hp and 'a2' in hp) and (hp['a1'] > 0 or hp['a2'] > 0):
-                loss += reg_model.layers1.sparsifying_loss(hp['a1'], hp['a2'])                      # TODO: deal with layers2
+            if hp.get('sd', 0):
 
-            if 'e1' in hp and hp['e1'] > 0:
-                loss += reg_model.layers1.entropy_loss(hp['e1'])
+                if critic.iters:
 
-            if 'e2' in hp and hp['e2'] > 0:                    
-                entropy = reg_model.layers1.entropy()
-                var_entropy = F.softmax(lat_acts.var(dim=0)) * entropy
-                loss += hp['e2'] * var_entropy.pow(2).sum()
-
-            if 'e3' in hp and hp['e3'] > 0:
-                try:
-                    data_real = disc_data.get().squeeze(0)
-                except:
-                    data_real = disc_data.get(in_data=in_data).squeeze(0)
-
-                # v1
-                # eps = 1e-6
-                # temp = 0.05
-                # err = (data_real.unsqueeze(-1) - lat_acts.unsqueeze(0))
-                # norm = F.softmax(-1/2 * temp * err.pow(2).mean(dim=1), dim=0) + eps
-                # entropy = -(norm * norm.log2()).sum(dim=0)
-
-                # v2
-                # eps = 1e-6
-                # temp = 0.05
-                # var = data_real.unsqueeze(-1).abs() + eps
-                # err = (data_real.unsqueeze(-1) - lat_acts.unsqueeze(0)) / var
-                # det = var.log().sum(dim=1)
-                # norm = F.softmax(-1/2 * temp * (det + err.pow(2).mean(dim=1)), dim=0) + eps
-                # entropy = -(norm * norm.log2()).sum(dim=0)
-
-                # v3
-                temp = 0.05
-                lat_size = lat_acts.shape[1]
-                lib_size = data_real.shape[0]
-                corr = torch.corrcoef(torch.vstack((lat_acts.T, data_real)))[:lat_size, -lib_size:]
-                norm = F.softmax(temp * corr.abs(), dim=1)
-                entropy = -(norm * norm.log2()).sum(dim=1)
-             
-                loss += hp['e3'] * entropy.pow(2).sum()
-
-            if 'sd' in hp and hp['sd'] > 0:
-
-                # get fake extension data
-                ext_data_fake = []
-                if 'ext' in hp and hp['ext'] is not None:
-                    for ext_name in hp['ext']:
-                        if ext_name == "input":
-                            ext_data_fake.append(in_data)
-                        elif ext_name == "grad":
-                            grad_data_fake = reg_model.jacobian(in_data, get_lat=True).transpose(0,1)               # lat x batch x grad
-                            ext_data_fake.append(grad_data_fake.detach())
-                        else:
-                            raise KeyError(f"Extension {ext_name} is not defined.")
-
-                if critic.iters > 0:
+                    # TODO:
+                    # all data for critic training should be detached
+                    # a hierarchical model of depth > 1 might have different input dimensions
+                    # should we regularize the model until we have the same dimensionality for levels in the hierarchy?
+                    # should we train a different critic for each level?
+                    # let's hardcode using the first level only for now
 
                     # get fake data
-                    data_fake = lat_acts.detach().T
+                    data_fake = io_data[0][1].detach().T
                    
                     # get real data
-                    try:
-                        datasets_real = disc_data.get(lat_acts.shape[1])
-                    except:
-                        if disc_data.iter_sample:
-                            datasets_real = disc_data.get(lat_acts.shape[1], in_data, critic.iters)
-                        else:
-                            datasets_real = disc_data.get(lat_acts.shape[1], in_data)
-                    
+                    datasets_real = disc_lib.get(io_data[0][1].shape[1], io_data[0][0].detach(), max(1, disc_lib.iter_sample*critic.iters))
                     dataset_real = datasets_real[...,0]
-                
-                    # get real extension data
-                    ext_data_real = []
-                    if 'ext' in hp and hp['ext'] is not None:
-                        for ext_name in hp['ext']:
-                            if ext_name == "input":
-                                ext_data_real.append(in_data)
-                            elif ext_name == "grad":
-                                grad_data_real = datasets_real[...,1:]                                              # iters x lat x batch x grad
-                                ext_data_real.append(grad_data_real)
-                            else:
-                                raise KeyError(f"Extension {ext_name} is not defined.")
-                        
-                        # extend real and fake data
-                        dataset_real = ut.extend(dataset_real, *ext_data_real, ext_type=hp['ext_type'])
-                        data_fake = ut.extend(data_fake, *ext_data_fake, ext_type=hp['ext_type'])
-                
+
                     # train discriminator
                     critic.fit(dataset_real, data_fake)
                 
-                # extend latent activations
-                # TODO: what is the extension data here? do we use grad_data_fake detached or not detached? check softplus activation function
-                data_acts = lat_acts.T
-                if 'ext' in hp and hp['ext'] is not None:
-                    data_acts = ut.extend(data_acts, *ext_data_fake, ext_type=hp['ext_type'])
-
                 # regularize with critic prediction
-                p = critic(data_acts)
+                p = critic(io_data[0][1].T)                                             # TODO: hardcoded using first level only
                 l = hp['sd'] * predict(p).mean()
                 loss += l
 
@@ -468,27 +374,30 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
             disc_loss.append(np.mean(batch_disc_loss))
         times.append(time.time() - stime)
 
+        # evaluate model on validation data
         if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
             model.eval()
             with torch.no_grad():
-                preds, lat_acts = model(val_data.in_data, get_lat=True)
+                preds, io_data = model(val_data.in_data, get_io_data=True)
                 val_loss.append(loss_fun(preds, val_data.target_data).item())
                 
                 if val_data.lat_data is not None:
-                    ls = lat_acts.shape[1]
-                    corr = torch.corrcoef(torch.hstack((lat_acts, val_data.lat_data)).T)
-                    corr_mat.append(corr[:ls, -ls:])
+                    corrs = []
+                    for i in range(len(io_data)):
+                        corr = torch.corrcoef(torch.hstack((io_data[i][1], val_data.lat_data[i])).T)
+                        io_len = io_data[i][1].shape[1]
+                        lat_len = val_data.lat_data[i].shape[1]
+                        corrs.append(corr[:io_len, -lat_len:])
+                    corr_mat.append(corrs)
 
                 if rec_file is not None:
-                    w = model.layers2[0].weight
-                    b = model.layers2[0].bias
-                    rec_acts.append(lat_acts * w + b)
+                    rec_io_data.append([model.lts[i+1](io_data[i][1]) for i in range(len(io_data))])
 
             model.train()
         
             t_update = {"train_loss": train_loss[-1], "val_loss": val_loss[-1]}
             if val_data.lat_data is not None:
-                t_update["min_corr"] = corr_mat[-1].abs().max(dim=1).values.min()
+                t_update["min_corr"] = min([corr.abs().max(dim=1).values.min().item() for corr in corr_mat[-1]])
 
             t.set_postfix({k: f"{v:.2e}" if v < 0.1 else f"{v:.2f}" for k, v in t_update.items()})
             if wandb_project:
@@ -509,6 +418,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         total_val_loss = loss_fun(model(val_data.in_data), val_data.target_data).item()
         print(f"Total training loss: {total_train_loss:.3e}")
         print(f"Total validation loss: {total_val_loss:.3e}")
+    model.train()
 
     state = {
         "seed_state": torch.get_rng_state(),
@@ -520,21 +430,21 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
         "corr_mat": corr_mat,
         "disc_preds": disc_preds,
         "disc_loss": disc_loss,
+        "times": times,
         "total_train_loss": total_train_loss,
         "total_val_loss": total_val_loss,
-        "times": times,
         "data_path": train_data.path,
         "in_var": train_data.in_var,
         "target_var": train_data.target_var,
         }
 
-    if 'sd' in hp and hp['sd'] > 0:
+    if hp.get('sd', 0):
         state_update = {
             "disc_state": critic.state_dict(),
             "disc_opt_state": critic.optimizer.state_dict(),
-            "fun_path": disc_data.path,
-            "disc_shuffle": disc_data.shuffle,
-            "disc_iter_sample": disc_data.iter_sample,
+            "fun_path": disc_lib.path,
+            "disc_shuffle": disc_lib.shuffle,
+            "disc_iter_sample": disc_lib.iter_sample,
         }
         state.update(state_update)
 
@@ -548,7 +458,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, disc_cls=Non
 
     if rec_file:
         os.makedirs(os.path.dirname(os.path.abspath(rec_file)), exist_ok=True)
-        joblib.dump(rec_acts, rec_file)
+        joblib.dump(rec_io_data, rec_file)
 
         # TODO: do we want to save recordings to wandb?
         if wandb_project:
@@ -565,6 +475,9 @@ if __name__ == '__main__':
     # set device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    # set seed
+    seed = None
+
     # set wandb project
     wandb_project = None # "first-try"
     sweep_id = None
@@ -577,9 +490,9 @@ if __name__ == '__main__':
     # load data
     data_path = "data_1k"
 
-    in_var = "X11"
-    lat_var = "G11"
-    target_var = "F11"
+    in_var = "X07"
+    lat_var = "G07"
+    target_var = "F07"
 
     mask_ext = ".mask"
     try:
@@ -594,17 +507,17 @@ if __name__ == '__main__':
     train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
     val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
-    # create discriminator data
-    fun_path = "funs/F11_v1.lib"
+    # load discriminator library
+    fun_path = "funs/F07_v2.lib"
     shuffle = True
     iter_sample = False
 
     if fun_path:
-        disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
+        disc_lib = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
     else:
-        disc_data = None
+        disc_lib = None
     
-    # set load and save file
+    # set load, record and save files
     load_file = None
     disc_file = None
     save_file = None
@@ -615,45 +528,35 @@ if __name__ == '__main__':
     hyperparams = {
         "arch": {
             "in_size": train_data.in_data.shape[1],
-            "out_size": train_data.target_data.shape[1],
-            "hid_num": (2, 2),
-            "hid_size": (32, 32),
-            "hid_type": ("MLP", "MLP"),
+            "lat_size": 3,
+            "out_fun": "sum",
+            "hid_num": 4,
+            "hid_size": 32,
+            "hid_type": "DSN",
             "hid_kwargs": {
-                "alpha": None,
+                "alpha": [[1,0],[0,1],[1,1]],
                 "norm": None,
                 "prune": None,
                 },
-            "lat_size": 3,
+            "lin_trans": True,
             },
-        "epochs": 1000,
+        "epochs": 50000,
         "runtime": None,
         "batch_size": train_data.in_data.shape[0],
         "shuffle": False,
-        "lr": 1e-4,
+        "lr": 1e-3,
         "wd": 1e-7,
         "l1": 0.0,
-        "a1": 0.0,
-        "a2": 0.0,
         "e1": 0.0,
-        "e2": 0.0,
-        "e3": 0.0,
-        "gc": 0.0,
         "sd": 1e-4,
-        "sd_fun": "sigmoid",
-        "ext": None,
-        "ext_type": None,
-        "ext_size": 0,
+        "sd_fun": "linear",
         "disc": {
             "hid_num": 2,
             "hid_size": 64,
-            "lr": 1e-4,
-            "wd": 1e-7,
-            "betas": (0.9,0.999),
+            "lr": 1e-3,
             "iters": 5,
-            "gp": 0.0,
-            "loss_fun": "BCE",
+            "wd": 1e-7,
         },
     }
 
-    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, rec_file=rec_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    run_training(model_cls, hyperparams, train_data, val_data, seed, disc_cls, disc_lib, load_file, disc_file, save_file, rec_file, log_freq, wandb_project, device)

@@ -25,7 +25,7 @@ except:
 
 class SDNet(nn.Module):
 
-    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=None, loss_fun=None):
+    def __init__(self, in_size, hid_num=1, hid_size=100, emb_size=None, lr=1e-4, wd=1e-7, betas=(0.9,0.999), iters=5, gp=None, loss_fun="BCE"):
         super().__init__()
 
         self.in_size = in_size

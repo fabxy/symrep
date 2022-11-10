@@ -4,14 +4,18 @@ import joblib
 from srnet import SRNet, SRData, run_training
 from sdnet import SDNet, SDData
 import wandb
+from collections.abc import Iterable
 
 # set device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+# set seeds
+seeds = [0, 1, 2, 3, 4]
+
 # set wandb options
-wandb_project = "184-DSN-SD-comb-study-F07_v2"
-sweep_id = "y6np63gb"
-sweep_num = 20
+wandb_project = "194-MLP-LT-comp-F07"
+sweep_id = None
+sweep_num = None
 
 # select generator and discriminator
 model_cls = SRNet
@@ -37,20 +41,20 @@ except:
 train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
 val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
-# create discriminator data
+# load discriminator library
 fun_path = "funs/F07_v2.lib"
 shuffle = True
 iter_sample = False
     
 if fun_path:
-    disc_data = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
+    disc_lib = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
 else:
-    disc_data = None
+    disc_lib = None
 
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v2_DSN_SD_comb_study.pkl"
+save_file = "models/srnet_model_F07_v2_DSN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
@@ -58,49 +62,40 @@ log_freq = 25
 hyperparams = {
     "arch": {
         "in_size": train_data.in_data.shape[1],
-        "out_size": train_data.target_data.shape[1],
-        "hid_num": (2, 0),
+        "lat_size": 3,
+        "out_fun": "sum",
+        "hid_num": 4,
         "hid_size": 32,
-        "hid_type": ("DSN", "MLP"),
+        "hid_type": "DSN",
         "hid_kwargs": {
             "alpha": [[1,0],[0,1],[1,1]],
             "norm": None,
             "prune": None,
             },
-        "lat_size": 3,
+        "lin_trans": True,
         },
     "epochs": 50000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
     "shuffle": False,
-    "lr": 1e-4,
+    "lr": 1e-3,
     "wd": 1e-7,
     "l1": 0.0,
-    "a1": 0.0,
-    "a2": 0.0,
     "e1": 0.0,
-    "e2": 0.0,
-    "e3": 0.0,
-    "gc": 0.0,
-    "sd": 1.0,
+    "sd": 1e-4,
     "sd_fun": "linear",
-    "ext": None,
-    "ext_type": None,
-    "ext_size": 0,
     "disc": {
         "hid_num": 2,
         "hid_size": 64,
-        "lr": 1e-4,
-        "wd": 1e-7,
-        "betas": (0.9,0.999),
+        "lr": 1e-3,
         "iters": 5,
-        "gp": 0.0,
-        "loss_fun": "BCE",
+        "wd": 1e-7,
     },
 }
 
 def train():
-    run_training(model_cls, hyperparams, train_data, val_data, disc_cls, disc_data, load_file=load_file, disc_file=disc_file, save_file=save_file, rec_file=rec_file, log_freq=log_freq, device=device, wandb_project=wandb_project)
+    for seed in seeds if isinstance(seeds, Iterable) else [seeds]:
+        run_training(model_cls, hyperparams, train_data, val_data, seed, disc_cls, disc_lib, load_file, disc_file, save_file, rec_file, log_freq, wandb_project, device)
 
 if __name__ == "__main__":
 
