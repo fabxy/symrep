@@ -25,7 +25,7 @@ disc_cls = SDNet
 data_path = "data_1k"
 
 in_var = "X07"
-lat_var = ["G07", "F07"]
+lat_var = "G07"
 target_var = "F07"
 
 mask_ext = ".mask"
@@ -41,8 +41,8 @@ except:
 train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
 val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
-# create discriminator data
-fun_path = "funs/F07_v3.lib"
+# load discriminator library
+fun_path = "funs/F07_v2.lib"
 shuffle = True
 iter_sample = False
     
@@ -54,26 +54,26 @@ else:
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v3_DSN_MLP_SD_check.pkl"
+save_file = "models/srnet_model_F07_v2_DSN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
 # define hyperparameters
 hyperparams = {
-    "arch": {
-        "in_size": train_data.in_data.shape[1],
-        "lat_size": (3, 1),
-        "out_fun": None,
-        "hid_num": (4, 0),
-        "hid_size": 32,
-        "hid_type": ("DSN", "MLP"),
-        "hid_kwargs": {
-            "alpha": [[1,0],[0,1],[1,1]],
-            "norm": None,
-            "prune": None,
+        "arch": {
+            "in_size": train_data.in_data.shape[1],
+            "lat_size": (3, 1),
+            "cell_type": ("DSN", "MLP"),
+            "hid_num": (4, 0),
+            "hid_size": 32,
+            "cell_kwargs": {
+                "alpha": [[1,0],[0,1],[1,1]],
+                "norm": None,
+                "prune": None,
+                # "lin_trans": False,
+                },
+            "out_fun": None,
             },
-        "lin_trans": False,
-        },
     "epochs": 50000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],

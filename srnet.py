@@ -11,9 +11,8 @@ import torch.optim as optim
 import wandb
 
 from collections.abc import Iterable
-from sjnn import SparseJacobianNN as SJNN
 from sdnet import SDNet, SDData
-import srnet_utils as ut
+from sjnn import SparseJacobianNN as SJNN
 
 try:
     if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -26,11 +25,22 @@ except:
 
 class LinearTransform(nn.Module):
 
-    def __init__(self, in_size, bias=True):
+    def __init__(self, in_size, weight=None, bias=None):
         super().__init__()
 
-        self.w = nn.Parameter(torch.ones((1, in_size), requires_grad=True))
-        self.b = nn.Parameter(torch.zeros((1, in_size), requires_grad=bias))
+        if weight is None:
+            self.w = nn.Parameter(torch.ones((1, in_size)))
+        elif weight == -1:
+            self.w = nn.Parameter(torch.ones((1, in_size), requires_grad=False))
+        else:
+            self.w = nn.Parameter(torch.Tensor(weight).reshape(1,-1), requires_grad=False)
+
+        if bias is None:
+            self.b = nn.Parameter(torch.zeros((1, in_size)))
+        elif bias == -1:
+            self.b = nn.Parameter(torch.zeros((1, in_size)), requires_grad=False)
+        else:
+            self.b = nn.Parameter(torch.Tensor(bias).reshape(1,-1), requires_grad=False)
 
     def forward(self, x):
         return x * self.w + self.b
@@ -38,7 +48,7 @@ class LinearTransform(nn.Module):
 
 class MLP(nn.Module):
 
-    def __init__(self, in_size, out_size, hid_num, hid_size):
+    def __init__(self, in_size, out_size, hid_num, hid_size, **_):
         super().__init__()
 
         if hid_num == 0:
@@ -54,21 +64,100 @@ class MLP(nn.Module):
 
         self.layers = nn.Sequential(*layers)
 
-    def forward(self, x):
-        return self.layers(x)
+    def forward(self, x, get_io_data=False):
+        if get_io_data:
+            return (self.layers(x), [])
+        else:
+            return self.layers(x)
 
     def __getitem__(self, idx):
         return self.layers[idx]
 
 
+class DSN(nn.Module):
+
+    def __init__(self, in_size, out_size, hid_num, hid_size, alpha=None, norm=None, prune=None, lin_trans=False, **_):
+        super().__init__()
+
+        # MLPs
+        self.mlps = nn.ModuleList([MLP(in_size, 1, hid_num, hid_size) for _ in range(out_size)])
+        
+        # input mask
+        if alpha is None:
+            self.alpha = nn.ParameterList([nn.Parameter(torch.randn(1, in_size)) for _ in range(out_size)])
+        elif alpha == -1:
+            self.alpha = nn.ParameterList([nn.Parameter(torch.ones(1, in_size), requires_grad=False) for _ in range(out_size)])
+        else:            
+            self.alpha = nn.ParameterList([nn.Parameter(torch.Tensor(alpha[i]).reshape(1,-1), requires_grad=False) for i in range(out_size)])
+
+        if norm == "softmax":
+            self.norm = lambda x: F.softmax(x.abs(), dim=1)
+        else:
+            self.norm = nn.Identity()
+        
+        self.prune = prune
+
+        # linear transformations
+        if not isinstance(lin_trans, Iterable):
+            if lin_trans:
+                lin_trans = [((None, None), (None, None)) for _ in range(out_size)]
+            else:
+                lin_trans = [((-1, -1), (-1, -1)) for _ in range(out_size)]
+        
+        self.lt_in = nn.ModuleList([LinearTransform(in_size, *lin_trans[i][0]) for i in range(out_size)])
+        self.lt_out = nn.ModuleList([LinearTransform(1, *lin_trans[i][1]) for i in range(out_size)])
+                
+    def forward(self, x, get_io_data=False):
+
+        # loop over MLPs
+        preds = []
+        io_data = []
+        for i in range(len(self.mlps)):
+
+            # input transformation
+            y = self.lt_in[i](x)
+
+            if get_io_data:
+                in_data = y
+
+            # input mask
+            mask = self.norm(self.alpha[i])
+
+            if self.prune:
+                mask = torch.where(mask < self.prune, torch.zeros_like(mask), mask)
+
+            y = y * mask
+
+            # MLP
+            y = self.mlps[i](y)
+
+            if get_io_data:
+                io_data.append((in_data, y))
+
+            # output transformation
+            y = self.lt_out[i](y)
+
+            preds.append(y)
+
+        preds = torch.cat(preds, dim=1)
+
+        if get_io_data:
+            return (preds, io_data)
+        else:
+            return preds
+            
+
 class SRNet(nn.Module):
 
-    def __init__(self, in_size, lat_size, out_fun=None, hid_num=1, hid_size=100, hid_type="MLP", hid_kwargs=None, lin_trans=False):
+    def __init__(self, in_size, lat_size, cell_type="MLP", hid_num=1, hid_size=100, cell_kwargs=None, out_fun=None):
         super().__init__()
 
         # read network specifications
         if not isinstance(lat_size, Iterable):
             lat_size = [lat_size]
+
+        if isinstance(cell_type, str):
+            cell_type = [cell_type]
 
         if not isinstance(hid_num, Iterable):
             hid_num = [hid_num]
@@ -76,42 +165,22 @@ class SRNet(nn.Module):
         if not isinstance(hid_size, Iterable):
             hid_size = [hid_size]
 
-        if isinstance(hid_type, str):
-            hid_type = [hid_type]
+        if cell_kwargs is None:
+            cell_kwargs = [dict()]
+        elif isinstance(cell_kwargs, dict):
+            cell_kwargs = [cell_kwargs]
 
-        if hid_kwargs is None:
-            hid_kwargs = [dict()]
-        elif isinstance(hid_kwargs, dict):
-            hid_kwargs = [hid_kwargs]
-
-        depth = max(len(lat_size), len(hid_num), len(hid_size), len(hid_type), len(hid_kwargs))
+        depth = max(len(lat_size), len(cell_type), len(hid_num), len(hid_size), len(cell_kwargs))
 
         if len(lat_size) == 1: lat_size *= depth
+        if len(cell_type) == 1: cell_type *= depth
         if len(hid_num) == 1: hid_num *= depth
         if len(hid_size) == 1: hid_size *= depth
-        if len(hid_type) == 1: hid_type *= depth
-        if len(hid_kwargs) == 1: hid_kwargs *= depth
+        if len(cell_kwargs) == 1: cell_kwargs *= depth
 
-        # create network
-        lts = [LinearTransform(in_size) if lin_trans else nn.Identity()]
-        cells = []
+        # create cells
         sizes = [in_size, *lat_size]
-
-        for i in range(depth):
-
-            if hid_type[i] == "MLP":
-                cells.append(MLP(sizes[i], sizes[i+1], hid_num[i], hid_size[i]))
-
-            elif hid_type[i] == "DSN":
-                cells.append(SJNN(sizes[i], sizes[i+1], hid_size[i], hid_num[i]-1, **hid_kwargs[i]))
-
-            if lin_trans:
-                lts.append(LinearTransform(sizes[i+1]))
-            else:
-                lts.append(nn.Identity())
-
-        self.cells = nn.Sequential(*cells)
-        self.lts = nn.Sequential(*lts)
+        self.cells = nn.ModuleList([SJNN(sizes[i], sizes[i+1], hid_size[i], hid_num[i]-1, **cell_kwargs[i]) if cell_type[i] == "SJNN" else globals()[cell_type[i]](sizes[i], sizes[i+1], hid_num[i], hid_size[i], **cell_kwargs[i]) for i in range(depth)])
 
         # final operation
         if out_fun == "sum":
@@ -123,28 +192,26 @@ class SRNet(nn.Module):
 
     def forward(self, x, get_io_data=False):
 
-        # initial linear transformation
-        x = self.lts[0](x)
-
         # loop over cells
         io_data = []
-        for i in range(len(self.cells)):
-
+        lat_data = []
+        for cell in self.cells:
             if get_io_data:
-                in_data = x
-
-            x = self.cells[i](x)
-
-            if get_io_data:
-                io_data.append((in_data, x))
-
-            x = self.lts[i+1](x)
-
+                if isinstance(cell, SJNN):
+                    x = cell(x)
+                    lat_data.append(x)
+                else:
+                    x, cell_io_data = cell(x, get_io_data)
+                    io_data.append(cell_io_data)
+                    lat_data.append(x)
+            else:
+                x = cell(x, get_io_data)               
+        
         # final operation
         x = self.out(x)
 
         if get_io_data:
-            return (x, io_data)
+            return (x, io_data, lat_data)
         else:
             return x
 
@@ -318,18 +385,21 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
 
             optimizer.zero_grad()
 
-            preds, io_data = model(in_data, get_io_data=True)
+            preds, io_data, lat_data = model(in_data, get_io_data=True)
 
             loss = loss_fun(preds, target_data)
 
             if hp.get('l1', 0):
-                for i in range(len(io_data)):
-                    loss += hp['l1'] * model.lts[i+1](io_data[i][1]).abs().sum(dim=0).mean()
+                for i in range(len(lat_data)):
+                    loss += hp['l1'] * (lat_data[i].abs().sum(dim=0).mean())
 
             if hp.get('e1', 0):
                 for cell in model.cells:
                     try:
-                        loss += cell.entropy_loss(hp['e1'])
+                        for a in cell.alpha:
+                            an = cell.norm(a)
+                            e = -(an * an.log2()).sum()
+                            loss += hp['e1'] * e.sum().pow(2)
                     except:
                         pass
 
@@ -344,18 +414,25 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
                     # should we train a different critic for each level?
                     # let's hardcode using the first level only for now
 
-                    # get fake data
-                    data_fake = io_data[0][1].detach().T
-                   
-                    # get real data
-                    datasets_real = disc_lib.get(io_data[0][1].shape[1], io_data[0][0].detach(), max(1, disc_lib.iter_sample*critic.iters))
-                    dataset_real = datasets_real[...,0]
+                    if isinstance(model.cells[0], SJNN):
+                        data_fake = lat_data[0].detach().T
+                        datasets_real = disc_lib.get(lat_data[0].shape[1], in_data)
+                        dataset_real = datasets_real[...,0]
+                    else:
+                        # get fake data
+                        data_fake = torch.cat([d[1].detach() for d in io_data[0]], dim=1).T
+                    
+                        # get real data
+                        dataset_real = torch.cat([disc_lib.get(1, d[0].detach(), max(1, disc_lib.iter_sample*critic.iters))[...,0] for d in io_data[0]], dim=1)
 
                     # train discriminator
                     critic.fit(dataset_real, data_fake)
                 
                 # regularize with critic prediction
-                p = critic(io_data[0][1].T)                                             # TODO: hardcoded using first level only
+                if isinstance(model.cells[0], SJNN):
+                    p = critic(lat_data[0].T)
+                else:
+                    p = critic(torch.cat([d[1] for d in io_data[0]], dim=1).T)                                                  # TODO: hardcoded using first level only
                 l = hp['sd'] * predict(p).mean()
                 loss += l
 
@@ -378,20 +455,19 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
         if epoch % log_freq == 0 or epoch == hp['epochs'] - 1:
             model.eval()
             with torch.no_grad():
-                preds, io_data = model(val_data.in_data, get_io_data=True)
+                preds, io_data, lat_data = model(val_data.in_data, get_io_data=True)
                 val_loss.append(loss_fun(preds, val_data.target_data).item())
                 
                 if val_data.lat_data is not None:
                     corrs = []
-                    for i in range(len(io_data)):
-                        corr = torch.corrcoef(torch.hstack((io_data[i][1], val_data.lat_data[i])).T)
-                        io_len = io_data[i][1].shape[1]
-                        lat_len = val_data.lat_data[i].shape[1]
-                        corrs.append(corr[:io_len, -lat_len:])
+                    for i in range(len(val_data.lat_data)):
+                        corr = torch.corrcoef(torch.cat((lat_data[i], val_data.lat_data[i]), dim=1).T)
+                        ls = val_data.lat_data[i].shape[1]
+                        corrs.append(corr[:ls, -ls:])
                     corr_mat.append(corrs)
 
                 if rec_file is not None:
-                    rec_io_data.append([model.lts[i+1](io_data[i][1]) for i in range(len(io_data))])
+                    rec_io_data.append(lat_data)
 
             model.train()
         
@@ -522,23 +598,23 @@ if __name__ == '__main__':
     disc_file = None
     save_file = None
     rec_file = None
-    log_freq = 1
+    log_freq = 25
 
     # define hyperparameters
     hyperparams = {
         "arch": {
             "in_size": train_data.in_data.shape[1],
-            "lat_size": 3,
-            "out_fun": "sum",
-            "hid_num": 4,
+            "lat_size": (3, 1),
+            "cell_type": ("SJNN", "MLP"),
+            "hid_num": (4, 0),
             "hid_size": 32,
-            "hid_type": "DSN",
-            "hid_kwargs": {
+            "cell_kwargs": {
                 "alpha": [[1,0],[0,1],[1,1]],
                 "norm": None,
                 "prune": None,
+                # "lin_trans": False, # [[[[1,1], [0,0]], [[2.7], [0]]], [[[1,3.0], [0,0]], [[5.0], [0]]], [[[1,1], [0,0]], [[4.5], [0]]]],    # shape: lat_size x 2 (in/out) x 2 (weight/bias) x in_size/1
                 },
-            "lin_trans": True,
+            "out_fun": None,
             },
         "epochs": 50000,
         "runtime": None,

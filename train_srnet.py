@@ -60,20 +60,20 @@ log_freq = 25
 
 # define hyperparameters
 hyperparams = {
-    "arch": {
-        "in_size": train_data.in_data.shape[1],
-        "lat_size": 3,
-        "out_fun": "sum",
-        "hid_num": 4,
-        "hid_size": 32,
-        "hid_type": "DSN",
-        "hid_kwargs": {
-            "alpha": [[1,0],[0,1],[1,1]],
-            "norm": None,
-            "prune": None,
+        "arch": {
+            "in_size": train_data.in_data.shape[1],
+            "lat_size": (3, 1),
+            "cell_type": ("DSN", "MLP"),
+            "hid_num": (4, 0),
+            "hid_size": 32,
+            "cell_kwargs": {
+                "alpha": [[1,0],[0,1],[1,1]],
+                "norm": None,
+                "prune": None,
+                # "lin_trans": False,
+                },
+            "out_fun": None,
             },
-        "lin_trans": True,
-        },
     "epochs": 50000,
     "runtime": None,
     "batch_size": train_data.in_data.shape[0],
