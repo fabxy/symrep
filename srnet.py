@@ -205,7 +205,7 @@ class SRNet(nn.Module):
                     io_data.append(cell_io_data)
                     lat_data.append(x)
             else:
-                x = cell(x, get_io_data)               
+                x = cell(x)
         
         # final operation
         x = self.out(x)
