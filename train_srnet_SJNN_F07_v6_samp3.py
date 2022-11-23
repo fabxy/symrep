@@ -13,7 +13,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seeds = [0, 1, 2, 3, 4]
 
 # set wandb options
-wandb_project = "194-MLP-LT-comp-F07"
+wandb_project = "195-fun-lib-ext-F07"
 sweep_id = None
 sweep_num = None
 
@@ -42,19 +42,20 @@ train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=d
 val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
 # load discriminator library
-fun_path = "funs/F07_v2.lib"
+fun_path = "funs/F07_v6.lib"
 shuffle = True
+samples = None
 iter_sample = False
     
 if fun_path:
-    disc_lib = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
+    disc_lib = SDData(fun_path, in_var, shuffle=shuffle, samples=samples, iter_sample=iter_sample)
 else:
     disc_lib = None
 
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v2_SJNN_MLP_SD_check.pkl"
+save_file = "models/srnet_model_F07_v6_SJNN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 

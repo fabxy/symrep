@@ -169,12 +169,13 @@ class SDNet(nn.Module):
 
 class SDData(Dataset):
 
-    def __init__(self, fun_path, in_var, in_data=None, shuffle=True, iter_sample=False):
+    def __init__(self, fun_path, in_var, in_data=None, shuffle=True, samples=None, iter_sample=False):
         super().__init__()
 
         self.in_var = in_var
         self.path = fun_path
         self.shuffle = shuffle
+        self.samples = samples
         self.iter_sample = iter_sample
 
         with open(fun_path, 'r') as f:

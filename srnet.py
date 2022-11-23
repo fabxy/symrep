@@ -327,6 +327,16 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
         critic.train()
         print(critic)
 
+        if disc_lib.samples is None:
+            if isinstance(model.cells[0], SJNN):                                                    # TODO: hardcoded using first level only
+                num_samples = model.cells[0].n_out
+            else:
+                num_samples = 1
+        elif disc_lib.samples == -1:
+            num_samples = None
+        else:
+            num_samples = disc_lib.samples
+
         if hp['sd_fun'] == "sigmoid":
             predict = lambda x: F.sigmoid(-x)
         elif hp['sd_fun'] == "logsigmoid":
@@ -416,14 +426,14 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
 
                     if isinstance(model.cells[0], SJNN):
                         data_fake = lat_data[0].detach().T
-                        datasets_real = disc_lib.get(lat_data[0].shape[1], in_data)
+                        datasets_real = disc_lib.get(num_samples, in_data)
                         dataset_real = datasets_real[...,0]
                     else:
                         # get fake data
                         data_fake = torch.cat([d[1].detach() for d in io_data[0]], dim=1).T
                     
                         # get real data
-                        dataset_real = torch.cat([disc_lib.get(1, d[0].detach(), max(1, disc_lib.iter_sample*critic.iters))[...,0] for d in io_data[0]], dim=1)
+                        dataset_real = torch.cat([disc_lib.get(num_samples, d[0].detach(), max(1, disc_lib.iter_sample*critic.iters))[...,0] for d in io_data[0]], dim=1)
 
                     # train discriminator
                     critic.fit(dataset_real, data_fake)
@@ -520,6 +530,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
             "disc_opt_state": critic.optimizer.state_dict(),
             "fun_path": disc_lib.path,
             "disc_shuffle": disc_lib.shuffle,
+            "disc_samples": disc_lib.samples,
             "disc_iter_sample": disc_lib.iter_sample,
         }
         state.update(state_update)
@@ -586,10 +597,11 @@ if __name__ == '__main__':
     # load discriminator library
     fun_path = "funs/F07_v2.lib"
     shuffle = True
+    samples = None
     iter_sample = False
 
     if fun_path:
-        disc_lib = SDData(fun_path, in_var, shuffle=shuffle, iter_sample=iter_sample)
+        disc_lib = SDData(fun_path, in_var, shuffle=shuffle, samples=samples, iter_sample=iter_sample)
     else:
         disc_lib = None
     

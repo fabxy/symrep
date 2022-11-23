@@ -42,7 +42,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=d
 val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
 
 # load discriminator library
-fun_path = "funs/F07_v5.lib"
+fun_path = "funs/F07_v7.lib"
 shuffle = True
 samples = None
 iter_sample = False
@@ -55,7 +55,7 @@ else:
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v5_SJNN_MLP_SD_check.pkl"
+save_file = "models/srnet_model_F07_v7_SJNN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
