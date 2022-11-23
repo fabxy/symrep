@@ -31,7 +31,7 @@ class LinearTransform(nn.Module):
         if weight is None:
             self.w = nn.Parameter(torch.ones((1, in_size)))
         elif weight == -1:
-            self.w = nn.Parameter(torch.ones((1, in_size), requires_grad=False))
+            self.w = nn.Parameter(torch.ones((1, in_size)), requires_grad=False)
         else:
             self.w = nn.Parameter(torch.Tensor(weight).reshape(1,-1), requires_grad=False)
 
