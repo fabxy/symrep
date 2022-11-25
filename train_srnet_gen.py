@@ -13,7 +13,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seeds = [0, 1, 2, 3, 4]
 
 # set wandb options
-wandb_project = None # "196-MLP-LT-comp-F07"
+wandb_project = "196-gen-train-data-in2-lat3"
 sweep_id = None
 sweep_num = None
 
@@ -81,7 +81,7 @@ print(alpha)
 # set load and save file
 load_file = None
 disc_file = None
-save_file = None # "models/srnet_model_F07_v2_DSN_MLP_SD_check.pkl"
+save_file = "models/srnet_model_G23_SJNN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
