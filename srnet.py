@@ -300,6 +300,9 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
         wandb.init(project=wandb_project, config=hyperparams)
         hp = wandb.config
 
+        wandb.run.summary["in_var"] = train_data.in_var
+        wandb.run.summary["target_var"] = train_data.target_var
+
         if save_file:
             save_file = save_file.replace('.', f"_{wandb.run.id}.")
             wandb.run.name = os.path.basename(save_file.format(**hp, **hp['arch'])).split('.')[0]
