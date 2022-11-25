@@ -13,7 +13,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seeds = [0, 1, 2, 3, 4]
 
 # set wandb options
-wandb_project = "195-fun-lib-ext-F07"
+wandb_project = None # "196-MLP-LT-comp-F07"
 sweep_id = None
 sweep_num = None
 
@@ -21,12 +21,23 @@ sweep_num = None
 model_cls = SRNet
 disc_cls = SDNet
 
-# load data
-data_path = "data_1k"
-
+# load discriminator library
+fun_path = "funs/F07_v8.lib"
 in_var = "X07"
-lat_var = "G07"
-target_var = "F07"
+shuffle = True
+samples = None
+iter_sample = False
+    
+if fun_path:
+    disc_lib = SDData(fun_path, in_var, shuffle=shuffle, samples=samples, iter_sample=iter_sample)
+else:
+    disc_lib = None
+
+# generate data
+data_path = "data_1k"
+lat_size = 3
+lat_mean = 3.0
+lat_range = 2.0
 
 mask_ext = ".mask"
 try:
@@ -38,24 +49,39 @@ except:
     val_mask = None
     print("Warning: No masks for training and validation loaded.")
 
-train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
-val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
+train_data = SRData(data_path, in_var, data_mask=train_mask, device=device)
+val_data = SRData(data_path, in_var, data_mask=val_mask, device=device)
 
-# load discriminator library
-fun_path = "funs/F07_v8.lib"
-shuffle = True
-samples = None
-iter_sample = False
-    
-if fun_path:
-    disc_lib = SDData(fun_path, in_var, shuffle=shuffle, samples=samples, iter_sample=iter_sample)
-else:
-    disc_lib = None
+idxs = torch.randperm(disc_lib.len)[:lat_size]
+
+raw_funs = [[disc_lib.funs[i][0].replace('N0*','')] for i in idxs]
+raw_means = disc_lib.evaluate(raw_funs, train_data.in_data).abs().mean(dim=1).squeeze().tolist()
+
+funs = [[disc_lib.funs[idx][0].replace('N0*', f'{1.0/raw_means[i]:.2f}*({lat_range}*U0+{lat_mean-1.0})*')] for i, idx in enumerate(idxs)]
+
+train_data.lat_data = [disc_lib.evaluate(funs, train_data.in_data).squeeze().T]
+train_data.target_data = train_data.lat_data[0].sum(dim=1).unsqueeze(-1)
+
+means = train_data.lat_data[0].abs().mean(dim=0).tolist()
+eff_funs = [[disc_lib.funs[idx][0].replace('N0', f'{means[i]/raw_means[i]:.2f}')] for i, idx in enumerate(idxs)]
+train_data.target_var = ' + '.join([f[0] for f in eff_funs])
+print(train_data.target_var)
+
+val_data.lat_data = [disc_lib.evaluate(eff_funs, val_data.in_data).squeeze().T]
+val_data.target_data = val_data.lat_data[0].sum(dim=1).unsqueeze(-1)
+
+# get alpha
+in_vars = [f"{in_var}[:,{i}]" for i in range(train_data.in_data.shape[1])]
+
+alpha = []
+for i in range(lat_size):
+    alpha.append([int(var in raw_funs[i][0]) for var in in_vars])
+print(alpha)
 
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v8_SJNN_MLP_SD_check.pkl"
+save_file = None # "models/srnet_model_F07_v2_DSN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
@@ -63,12 +89,12 @@ log_freq = 25
 hyperparams = {
         "arch": {
             "in_size": train_data.in_data.shape[1],
-            "lat_size": (3, 1),
+            "lat_size": (lat_size, 1),
             "cell_type": ("SJNN", "MLP"),
             "hid_num": (4, 0),
             "hid_size": 32,
             "cell_kwargs": {
-                "alpha": [[1,0],[0,1],[1,1]],
+                "alpha": alpha,
                 "norm": None,
                 "prune": None,
                 # "lin_trans": False,
