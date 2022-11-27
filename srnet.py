@@ -358,7 +358,7 @@ def run_training(model_cls, hyperparams, train_data, val_data=None, seed=None, d
         hp = wandb.config
 
         try:
-            wandb.run.summary["lat_funs"] = train_data.lat_funs[0]
+            wandb.run.summary["target_funs"] = train_data.target_funs[0]
         except:
             pass
 
