@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --ntasks=6
-#SBATCH --time=0-01:00:00
+#SBATCH --time=0-02:00:00
 
 # Load required modules
 if [ $PAWSEY_CLUSTER == "setonix" ]; then

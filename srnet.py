@@ -218,13 +218,14 @@ class SRNet(nn.Module):
 
 class SRData(Dataset):
 
-    def __init__(self, data_path, in_var=None, lat_var=None, target_var=None, data_mask=None, data_ext=".gz", device=torch.device("cpu")):
+    def __init__(self, data_path, in_var=None, lat_var=None, target_var=None, data_mask=None, data_ext=".gz", fun_ext=".info", device=torch.device("cpu")):
         super().__init__()
 
         # store args
         self.path = data_path
         self.mask = data_mask
-        self.ext = data_ext
+        self.data_ext = data_ext
+        self.fun_ext = fun_ext
         self.device = device
 
         self.in_var = in_var
@@ -241,21 +242,25 @@ class SRData(Dataset):
         else:
             self.in_data = None
 
-        # load latent data
+        # load latent data and functions
         if self.lat_var:
             self.lat_data = [self.load_data(var) for var in self.lat_var]
+            self.lat_funs = [self.load_functions(var) for var in self.lat_var]
         else:
             self.lat_data = None
+            self.lat_funs = None
 
-        # load target data
+        # load target data and functions
         if self.target_var:
             self.target_data = self.load_data(self.target_var)
+            self.target_funs = self.load_functions(self.target_var)
         else:
             self.target_data = None
+            self.target_funs = None
 
     def load_data(self, var):
 
-        data = np.loadtxt(os.path.join(self.path, var + self.ext))
+        data = np.loadtxt(os.path.join(self.path, var + self.data_ext))
 
         if len(data.shape) < 2:
             data = data.reshape(-1, 1)
@@ -264,6 +269,58 @@ class SRData(Dataset):
             data = data[self.mask]
 
         return torch.Tensor(data).to(self.device)                                                   # TODO: all data to device or per batch?
+
+    def load_functions(self, var):
+
+        with open(os.path.join(self.path, var + self.fun_ext), 'r') as f:
+            funs = f.readlines()
+
+        return [fun.strip() for fun in funs[:-1]]
+
+    def evaluate(self, funs):
+
+        data_dict = {self.in_var: self.in_data}
+        fun_data = [torch.Tensor(eval(fun, {'np': np}, data_dict)) for fun in funs]
+
+        return torch.stack(fun_data, dim=1)
+
+    def generate_data(self, lat_funs=None, target_funs=None):
+
+        if lat_funs is not None:
+            self.lat_funs = lat_funs
+        if target_funs is not None:
+            self.target_funs = target_funs
+
+        self.lat_data = [self.evaluate(funs) for funs in self.lat_funs]
+        self.target_data = self.evaluate(self.target_funs)
+
+    def generate_functions(self, disc_lib, lat_size, lat_mean=1.0, lat_range=0.5):
+
+        # NOTE: data generation is currently limited to:
+        # - a certain function library syntax (see assertion)
+        # - a hierarchical depth of one
+        # - a summation output function
+
+        assert(all([fun[0][:3] == "N0*" for fun in disc_lib.funs]))
+
+        # select functions
+        idxs = torch.randperm(disc_lib.len)[:lat_size]
+
+        # calculate mean magnitudes
+        raw_funs = [[disc_lib.funs[i][0].replace('N0*','')] for i in idxs]
+        raw_means = disc_lib.evaluate(raw_funs, self.in_data).abs().mean(dim=1).squeeze().tolist()
+
+        # sample coefficients and calculate data
+        funs = [[disc_lib.funs[idx][0].replace('N0*', f'{1.0/raw_means[i]:.2f}*({lat_range}*U0+{lat_mean-lat_range/2})*')] for i, idx in enumerate(idxs)]
+
+        self.lat_data = [disc_lib.evaluate(funs, self.in_data).squeeze().T]
+        self.target_data = self.lat_data[0].sum(dim=1).unsqueeze(-1)
+
+        # get functions with sampled coefficients (NOTE: the simpler approach would be to just sample the coefficients and use self.evaluate)
+        means = self.lat_data[0].abs().mean(dim=0).tolist()
+
+        self.lat_funs = [[disc_lib.funs[idx][0].replace('N0', f'{means[i]/raw_means[i]:.2f}') for i, idx in enumerate(idxs)]]
+        self.target_funs = [' + '.join(self.lat_funs[0])]
 
     def __len__(self):
         return self.target_data.shape[0]

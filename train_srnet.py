@@ -13,7 +13,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seeds = [0, 1, 2, 3, 4]
 
 # set wandb options
-wandb_project = "195-fun-lib-ext-F07"
+wandb_project = "197-gen-train-data-in2"
 sweep_id = None
 sweep_num = None
 
@@ -25,8 +25,8 @@ disc_cls = SDNet
 data_path = "data_1k"
 
 in_var = "X07"
-lat_var = "G07"
-target_var = "F07"
+lat_var = None
+target_var = None
 
 mask_ext = ".mask"
 try:
@@ -38,11 +38,11 @@ except:
     val_mask = None
     print("Warning: No masks for training and validation loaded.")
 
-train_data = SRData(data_path, in_var, lat_var, target_var, train_mask, device=device)
-val_data = SRData(data_path, in_var, lat_var, target_var, val_mask, device=device)
+train_data = SRData(data_path, in_var, lat_var, target_var, data_mask=train_mask, device=device)
+val_data = SRData(data_path, in_var, lat_var, target_var, data_mask=val_mask, device=device)
 
 # load discriminator library
-fun_path = "funs/F07_v5.lib"
+fun_path = "funs/F07_v8.lib"
 shuffle = True
 samples = None
 iter_sample = False
@@ -52,23 +52,41 @@ if fun_path:
 else:
     disc_lib = None
 
+# generate data
+lat_size = 5
+lat_mean = 3.0
+lat_range = 2.0
+
+if target_var is None:
+    train_data.generate_functions(disc_lib, lat_size, lat_mean, lat_range)
+    val_data.generate_data(train_data.lat_funs, train_data.target_funs)
+print(train_data.lat_funs[0])
+
+# define alpha
+in_size = train_data.in_data.shape[1]
+
+alpha = []
+for j in range(lat_size):
+    alpha.append([int(f"{in_var}[:,{i}]" in train_data.lat_funs[0][j]) for i in range(in_size)])
+print(alpha)
+
 # set load and save file
 load_file = None
 disc_file = None
-save_file = "models/srnet_model_F07_v5_SJNN_MLP_SD_check.pkl"
+save_file = f"models/srnet_model_G{in_size}{lat_size}_SJNN_MLP_SD_check.pkl"
 rec_file = None
 log_freq = 25
 
 # define hyperparameters
 hyperparams = {
         "arch": {
-            "in_size": train_data.in_data.shape[1],
-            "lat_size": (3, 1),
+            "in_size": in_size,
+            "lat_size": (lat_size, 1),
             "cell_type": ("SJNN", "MLP"),
             "hid_num": (4, 0),
             "hid_size": 32,
             "cell_kwargs": {
-                "alpha": [[1,0],[0,1],[1,1]],
+                "alpha": alpha,
                 "norm": None,
                 "prune": None,
                 # "lin_trans": False,

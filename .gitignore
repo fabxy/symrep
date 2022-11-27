@@ -2,6 +2,7 @@
 models/
 results/
 wandb/
+test/
 hall_of_fame_*
 
 # Byte-compiled / optimized / DLL files
