@@ -10,12 +10,12 @@ from collections.abc import Iterable
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # set seeds
-seeds = [0, 1, 2, 3, 4]
+seeds = [0, 1, 2]
 
 # set wandb options
-wandb_project = "197-gen-train-data-in2"
-sweep_id = None
-sweep_num = None
+wandb_project = "204-SJNN-MLP-SD-study-F12"
+sweep_id = "voowvbwq"
+sweep_num = 15
 
 # select generator and discriminator
 model_cls = SRNet
@@ -24,9 +24,9 @@ disc_cls = SDNet
 # load data
 data_path = "data_1k"
 
-in_var = "X07"
-lat_var = None
-target_var = None
+in_var = "X12"
+lat_var = "G12"
+target_var = "F12"
 
 mask_ext = ".mask"
 try:
@@ -42,7 +42,7 @@ train_data = SRData(data_path, in_var, lat_var, target_var, data_mask=train_mask
 val_data = SRData(data_path, in_var, lat_var, target_var, data_mask=val_mask, device=device)
 
 # load discriminator library
-fun_path = "funs/F07_v8.lib"
+fun_path = "funs/F12_v1.lib"
 shuffle = True
 samples = None
 iter_sample = False
@@ -73,7 +73,7 @@ print(alpha)
 # set load and save file
 load_file = None
 disc_file = None
-save_file = f"models/srnet_model_G{in_size}{lat_size}_SJNN_MLP_SD_check.pkl"
+save_file = "models/srnet_model_F12_SJNN_MLP_SD_study.pkl"
 rec_file = None
 log_freq = 25
 
